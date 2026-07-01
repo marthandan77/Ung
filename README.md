@@ -1,26 +1,56 @@
 # UNG Decision Engine V8 RTIS
 
-V8 RTIS is a signal-only QuantConnect decision engine for UNG.
+V8 RTIS is a signal-only UNG forecast and alert platform. It does not place live orders and it does not short UNG.
 
-RTIS means Round-Trip Intelligence System. The engine does not try to sell the
-exact top or buy the exact bottom. It asks one simple question:
+RTIS means Round-Trip Intelligence System. The engine asks one practical question:
 
 ```text
 Is SELL -> WAIT -> BUYBACK expected to beat HOLD?
 ```
 
-No live orders are placed in V8. It is long-only and alert-first.
+The local Streamlit GUI uses the same V8 RTIS state vocabulary as the QuantConnect-style `main.py` engine.
 
-## Core Setup
+## Run Locally
 
-- Asset: UNG
-- Resolution: minute
-- Backtest window: 2024-01-01 to 2026-06-15
-- Position assumption: 30,900 shares
-- Average cost assumption: 11.5453
-- Minimum harvest profit: 0.10 per share
-- Trading style: long-only intraday volatility harvest
-- Execution mode: signal-only
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+Configure market data with Alpaca environment variables or Streamlit secrets:
+
+```text
+ALPACA_API_KEY_ID
+ALPACA_API_SECRET_KEY
+ALPACA_DATA_FEED=iex
+```
+
+Optional alert delivery settings:
+
+```text
+TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID
+WHATSAPP_WEBHOOK_URL
+SMTP_HOST
+SMTP_PORT=587
+SMTP_USERNAME
+SMTP_PASSWORD
+SMTP_FROM
+```
+
+The GUI also has prompt boxes for Telegram bot token, Telegram chat ID, WhatsApp ID or phone, WhatsApp webhook URL, and Email ID. These are saved locally in SQLite.
+
+## Dashboard Workflow
+
+- Click `Fetch Latest Forecast` to pull real UNG market data from Alpaca.
+- Manual bar entry and demo bars are removed.
+- The app records every decision in the journal.
+- The app creates one `OFFICIAL` forecast per US trading session.
+- Material intraday changes become `Update A`, `Update B`, or `Update C`.
+- Forecast outcomes are filled at `+5m`, `+15m`, `+30m`, and `+60m` as later market bars arrive.
+- The scorecard reviews hit rate and average return by horizon.
+- Adaptive tuning starts only after at least 10 completed forecast reviews.
+- The GitHub button opens this repo. The heart button beside it contains the private easter egg requested for the GUI.
 
 ## V8 States
 
@@ -33,11 +63,9 @@ No live orders are placed in V8. It is long-only and alert-first.
 - `WAIT`
 - `PROTECT`
 
-`SELL_READY` means the engine believes the full round trip has better expected
-value than holding. It still does not place an order.
+`SELL_READY` means the engine believes the full round trip has better expected value than holding. It still does not place an order.
 
-`BUYBACK_READY` means the virtual sell has enough discount and support quality
-for a long-only rebuy signal. It still does not place an order.
+`BUYBACK_READY` means the virtual sell has enough discount and support quality for a long-only rebuy signal. It still does not place an order.
 
 ## Round-Trip Equation
 
@@ -60,7 +88,7 @@ The engine compares:
 V8 only allows `SELL_READY` when all of these are true:
 
 - position quantity is above zero
-- profit per share is at least 0.10
+- profit per share is at least the configured minimum harvest profit
 - harvest zone is reached
 - missed upside risk is below the threshold
 - re-entry probability is acceptable
@@ -90,97 +118,28 @@ V8 only allows `BUYBACK_READY` when all of these are true:
 - `hold_ev`: Hold expected value
 - `sell_buyback_ev`: Sell->Buyback expected value
 
-## Forecast Ledger
-
-The local/mobile engine now keeps a forecast-vs-actual ledger.
-
-Each decision records:
-
-- timestamp and price
-- signal state
-- expected direction
-- HMM regime and probabilities
-- Markov next-state probabilities
-- GARCH/EWMA volatility forecast
-- HE, HC, RP, BC, MQI, and RS
-- EV ranking
-
-As later bars arrive, the ledger fills actual outcomes at:
-
-- `+5m`
-- `+15m`
-- `+30m`
-- `+60m`
-
-This gives a simple scorecard for tuning parameters from real evidence instead
-of guessing.
-
 ## ML Truth Rules
 
 V8 does not create fake ML probabilities.
 
-- Local/mobile app dependencies now include `numpy`, `hmmlearn`, and `arch`.
-- HMM is `READY` only when `hmmlearn` imports and a real GaussianHMM is fitted
-  from actual feature rows.
+- HMM is `READY` only when `hmmlearn` imports and a real GaussianHMM is fitted from actual feature rows.
 - Markov is `READY` only when it is built from the actual HMM regime sequence.
-- GARCH is `READY` only when the real `arch` package fits a GARCH(1,1) model
-  on actual returns.
-- If `arch` is unavailable, volatility forecasting is labeled
-  `FALLBACK_EWMA`.
+- GARCH is `READY` only when the real `arch` package fits a GARCH(1,1) model on actual returns.
+- If `arch` is unavailable, volatility forecasting is labeled `FALLBACK_EWMA`.
 - EWMA is never called GARCH.
-
-QuantConnect may not include these third-party packages by default. In that
-case `main.py` stays honest and reports `NOT_READY` or `FALLBACK_EWMA`.
-
-## HMM Inputs
-
-When a real HMM is available, V8 fits on these actual minute-bar features:
-
-- log return
-- rolling volatility
-- volume ratio
-- VWAP distance
-- RSI normalized
-- ATR percentage
-
-The HMM output includes:
-
-- `regime_state_id`
-- `regime_probabilities`
-- `regime_label`
-- `model_status`
-- `last_fit_time`
-
-## Training Discipline
-
-- Train on 2024 data.
-- Validate on 2025 data.
-- Walk-forward test on 2026 data.
-- The current bar is stored for future fitting only after the current decision is
-  made.
-- No future bars are used for the current signal.
-
-## Example Alert
-
-```text
-UNG V8 ALERT | events=SELL_WATCH->SELL_READY;harvest zone reached |
-price=12.14 | bid=12.13 ask=12.14 |
-position=30900 avg_cost=11.5453 |
-signal=SELL_READY |
-reason=round-trip EV beats hold EV and re-entry odds are acceptable |
-regime=NOT_READY probs={} |
-markov=NONE |
-key_level=upper Bollinger |
-RTE=0.086 HE=83.4 RP=68.2 MUR=0.091 MQI=82.0 |
-EV=SELL_BUYBACK |
-logic=long-only signal: harvest only when SELL->WAIT->BUYBACK EV beats HOLD EV; no shorting; no live order
-```
 
 ## Files
 
-- `main.py`: QuantConnect V8 RTIS signal-only engine
-- `MODEL_VALIDATION.md`: model validation and anti-fake-ML rules
-- `CHANGELOG.md`: change history
+- `app.py`: Streamlit dashboard, alert contact prompts, forecast workflow, easter egg.
+- `ung_platform/engine.py`: local V8 RTIS forecast engine.
+- `ung_platform/storage.py`: SQLite journal, official forecast ledger, scorebook, tuning runs.
+- `ung_platform/alerts.py`: Telegram, WhatsApp webhook, and email alert delivery.
+- `main.py`: QuantConnect-style V8 RTIS signal-only engine.
+- `MODEL_VALIDATION.md`: model validation and anti-fake-ML rules.
+- `.github/workflows/ci.yml`: Python test workflow.
 
-The local Streamlit mobile dashboard files remain in the repository, but V8 RTIS
-is implemented first in `main.py` for QuantConnect-style validation.
+## Tests
+
+```bash
+pytest -q
+```
