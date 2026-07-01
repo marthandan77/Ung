@@ -90,6 +90,31 @@ V8 only allows `BUYBACK_READY` when all of these are true:
 - `hold_ev`: Hold expected value
 - `sell_buyback_ev`: Sell->Buyback expected value
 
+## Forecast Ledger
+
+The local/mobile engine now keeps a forecast-vs-actual ledger.
+
+Each decision records:
+
+- timestamp and price
+- signal state
+- expected direction
+- HMM regime and probabilities
+- Markov next-state probabilities
+- GARCH/EWMA volatility forecast
+- HE, HC, RP, BC, MQI, and RS
+- EV ranking
+
+As later bars arrive, the ledger fills actual outcomes at:
+
+- `+5m`
+- `+15m`
+- `+30m`
+- `+60m`
+
+This gives a simple scorecard for tuning parameters from real evidence instead
+of guessing.
+
 ## ML Truth Rules
 
 V8 does not create fake ML probabilities.
@@ -154,10 +179,8 @@ logic=long-only signal: harvest only when SELL->WAIT->BUYBACK EV beats HOLD EV; 
 ## Files
 
 - `main.py`: QuantConnect V8 RTIS signal-only engine
-- `app.py`: Streamlit/mobile dashboard
-- `ung_platform/engine.py`: local/mobile decision engine with real optional HMM, Markov, and GARCH
 - `MODEL_VALIDATION.md`: model validation and anti-fake-ML rules
 - `CHANGELOG.md`: change history
 
-The local Streamlit mobile dashboard now displays HMM, Markov, and GARCH status
-when enough real bars are available.
+The local Streamlit mobile dashboard files remain in the repository, but V8 RTIS
+is implemented first in `main.py` for QuantConnect-style validation.
