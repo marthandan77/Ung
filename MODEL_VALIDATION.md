@@ -1,59 +1,124 @@
 # Model Validation
 
-## Phase 1 Status
+## V8 RTIS Status
 
-V7-Lite does not claim fitted machine learning.
+V8 RTIS is signal-only. It does not place live orders and does not short UNG.
 
-Current truth:
+The model layer follows one strict rule:
 
-- HMM: `NOT_READY`
-- HMM probabilities: empty
-- Markov state: `NOT_READY`
-- Markov transition warning: `NONE`
-- GARCH: `FALLBACK_EWMA` after returns exist, otherwise `NOT_READY`
+```text
+If the model is not actually fitted from real data, the status must say NOT_READY.
+```
 
-The engine uses observable indicators only:
+## Real HMM Rule
+
+HMM can be `READY` only when all of these are true:
+
+- `hmmlearn` is importable in the target QuantConnect environment.
+- `GaussianHMM` is fitted on actual feature rows.
+- Feature rows come from bars already received.
+- The current bar is not used to fit the model before the current signal.
+- Probabilities come from real HMM inference.
+
+HMM inputs:
+
+- log return
+- rolling volatility
+- volume ratio
+- VWAP distance
+- RSI normalized
+- ATR percentage
+
+HMM outputs:
+
+- `regime_state_id`
+- `regime_probabilities`
+- `regime_label`
+- `model_status`
+- `last_fit_time`
+
+If the real fit or inference is unavailable, V8 outputs:
+
+```text
+model_status = NOT_READY
+regime_probabilities = {}
+regime_label = NOT_READY
+```
+
+No fake bull, sideways, or bear probabilities are generated.
+
+## Markov Rule
+
+Markov can be `READY` only after HMM is `READY` and an actual HMM regime sequence
+exists.
+
+The transition matrix is built only from observed HMM regime-state transitions.
+
+If HMM is not ready, Markov outputs:
+
+```text
+markov_status = NOT_READY
+transition_warning = NONE
+```
+
+## GARCH Rule
+
+GARCH can be `READY` only when the `arch` package is importable and a real
+GARCH(1,1) model is fitted on actual returns.
+
+If `arch` is unavailable or the fit fails, V8 uses EWMA volatility and labels it:
+
+```text
+garch_status = FALLBACK_EWMA
+```
+
+EWMA is not called GARCH.
+
+## Observable Indicators
+
+V8 uses these observable market inputs:
 
 - VWAP
 - ATR
 - RSI
-- EMA fast/slow
-- Bollinger Bands
+- EMA fast and slow slope
+- Bollinger position
+- volume ratio
+- opening range status
 - realized volatility
-- rolling volume ratio
-- opening range
 - profit per share versus average cost
+- bid, ask, and spread when available
 
-## Score Meaning
+QuantConnect indicators are checked with `IsReady` before the engine emits
+decisions.
 
-HE, HC, RS, RP, BC, and MQI are observable scores, not trained ML outputs.
+## RTIS Metrics
 
-- HE: Harvest Expectancy from profit zone, VWAP extension, RSI, volume, trend, and opening range.
-- HC: Harvest Confidence from cost-basis protection and price structure.
-- RS: Regime Stability proxy from observable trend and volatility percentile.
-- RP: Re-entry Probability from prior harvest gap, discount to VWAP, RSI, and rebound.
-- BC: Breakout Confidence from opening range, trend, volume, and VWAP distance.
-- MQI: Market Quality Index from warmup, volume, and spread.
+- `RTE`: Round Trip Expectancy
+- `HE`: Harvest Expectancy
+- `RP`: Re-entry Probability
+- `MUR`: Missed Upside Risk
+- `BC`: Breakout Confidence
+- `MQI`: Market Quality Index
+- `RS`: Regime Stability
+- `hold_ev`: Hold expected value
+- `sell_buyback_ev`: Sell->Buyback expected value
 
-## Anti-Lookahead Rule
+The primary ranking is:
 
-The local monitor only uses bars already received from the data source.
+```text
+SELL->BUYBACK if sell_buyback_ev > hold_ev
+otherwise HOLD
+```
 
-The QuantConnect file should be backtested separately. A clean local Python syntax check is not the same as a QuantConnect backtest.
+## Anti-Lookahead Discipline
 
-## Phase 2 Requirements
+- Backtest dates are 2024-01-01 through 2026-06-15.
+- 2024 is the training period.
+- 2025 is the validation period.
+- 2026 is the walk-forward test period.
+- Current-bar features are stored only after the current decision.
+- The engine never uses future bars for current decisions.
 
-Real HMM can be added only when:
-
-- `hmmlearn` is actually importable in the target environment.
-- The model is fitted on historical features.
-- Regime labels are derived from hidden-state statistics.
-- Probabilities come from actual model inference.
-
-Real GARCH can be added only when:
-
-- `arch` is actually importable in the target environment.
-- The model is fitted on historical returns.
-- Forecasts come from the fitted model.
-
-Until then, the engine must say `NOT_READY` or `FALLBACK_EWMA`.
+Local syntax validation is not the same as a full QuantConnect backtest. The
+file is written in LEAN style so it can be tested on the QuantConnect platform.
