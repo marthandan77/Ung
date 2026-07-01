@@ -194,6 +194,13 @@ else:
     ]
     st.dataframe(rows, hide_index=True, use_container_width=True)
 
+st.subheader("Forecast Scorecard")
+st.caption("Hit rate compares each saved signal against actual price movement after 5, 15, 30, and 60 minutes.")
+st.dataframe(db.forecast_scorecard(500), hide_index=True, use_container_width=True)
+
+st.subheader("Forecast Ledger")
+st.dataframe(db.latest_forecasts(75), hide_index=True, use_container_width=True)
+
 st.subheader("Journal")
 st.dataframe(db.latest_journal(75), hide_index=True, use_container_width=True)
 
