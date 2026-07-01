@@ -9,6 +9,10 @@ from statistics import mean, pstdev
 
 import requests
 import streamlit as st
+try:
+    from streamlit_autorefresh import st_autorefresh
+except ImportError:
+    st_autorefresh = None
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -310,6 +314,34 @@ def reset_engine() -> None:
     st.session_state.pop("engine", None)
     st.session_state.pop("last_decision", None)
     st.session_state.pop("journal", None)
+    st.session_state.pop("live_seeded", None)
+
+
+def store_decision(decision: Decision) -> None:
+    st.session_state["last_decision"] = decision
+    st.session_state.setdefault("journal", [])
+    st.session_state["journal"].append(
+        {
+            "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "state": decision.state,
+            "price": decision.price,
+            "profit/share": decision.profit_per_share,
+            "HE": decision.he,
+            "HC": decision.hc,
+            "MQI": decision.mqi,
+            "reason": decision.reason,
+        }
+    )
+
+
+def fetch_live(engine: DecisionEngine) -> None:
+    client = AlpacaDataClient(alpaca_config())
+    if not st.session_state.get("live_seeded"):
+        for bar in client.recent_bars(limit=max(60, engine.config.warmup_bars + 20)):
+            engine.update(bar)
+        st.session_state["live_seeded"] = True
+    store_decision(engine.update(client.latest_bar()))
+    st.session_state["last_fetch_time"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 st.set_page_config(page_title="UNG V7-Lite", layout="wide")
@@ -321,6 +353,12 @@ with st.sidebar:
     minimum_profit = st.number_input("Minimum harvest profit/share", min_value=0.01, value=0.10, step=0.01)
     st.divider()
     st.caption("Alpaca API: ready" if alpaca_config().ready else "Alpaca API: missing keys")
+    auto_refresh = st.toggle("Auto refresh", value=False)
+    refresh_seconds = st.number_input("Refresh seconds", min_value=15, max_value=300, value=60, step=15)
+    if auto_refresh and st_autorefresh is None:
+        st.warning("Auto refresh package missing. Check requirements.txt.")
+    if auto_refresh and st_autorefresh is not None:
+        st_autorefresh(interval=int(refresh_seconds) * 1000, key="ung_live_refresh")
     if st.button("Reset Engine", use_container_width=True):
         reset_engine()
 
@@ -342,37 +380,29 @@ with left:
     manual_volume = st.number_input("Manual volume", min_value=0, value=100_000, step=10_000)
     if st.button("Add Manual Bar", use_container_width=True):
         bar = MarketBar(datetime.now(timezone.utc), manual_price, manual_price, manual_price, manual_price, manual_volume)
-        st.session_state["last_decision"] = engine.update(bar)
+        store_decision(engine.update(bar))
 with middle:
     if st.button("Load Demo Bars", use_container_width=True):
         for bar in demo_bars(float(average_cost)):
-            st.session_state["last_decision"] = engine.update(bar)
+            last_demo_decision = engine.update(bar)
+        store_decision(last_demo_decision)
 with right:
     if st.button("Fetch Latest", use_container_width=True):
         try:
-            client = AlpacaDataClient(alpaca_config())
-            for bar in client.recent_bars(limit=max(60, engine.config.warmup_bars + 20)):
-                st.session_state["last_decision"] = engine.update(bar)
-            st.session_state["last_decision"] = engine.update(client.latest_bar())
+            fetch_live(engine)
         except Exception as exc:
             st.error(str(exc))
+
+if auto_refresh and alpaca_config().ready:
+    try:
+        fetch_live(engine)
+    except Exception as exc:
+        st.error(str(exc))
 
 decision = st.session_state.get("last_decision")
 if decision is None:
     st.info("Add a manual bar, load demo bars, or configure Alpaca secrets and fetch latest.")
 else:
-    st.session_state["journal"].append(
-        {
-            "time": datetime.now(timezone.utc).isoformat(),
-            "state": decision.state,
-            "price": decision.price,
-            "profit/share": decision.profit_per_share,
-            "HE": decision.he,
-            "HC": decision.hc,
-            "MQI": decision.mqi,
-            "reason": decision.reason,
-        }
-    )
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Signal", decision.state)
     c2.metric("Price", f"{decision.price:.2f}")
@@ -380,6 +410,8 @@ else:
     c4.metric("HE", f"{decision.he:.1f}")
     c5.metric("MQI", f"{decision.mqi:.1f}")
     st.subheader("Decision")
+    if "last_fetch_time" in st.session_state:
+        st.caption(f"Last live fetch: {st.session_state['last_fetch_time']} UTC")
     st.write(decision.reason)
     st.code(decision.alert_text, language="text")
     st.dataframe(
