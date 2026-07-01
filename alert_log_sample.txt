@@ -1,0 +1,11 @@
+UNG ALERT HARVEST
+Price: 11.72 | Bid/Ask: 11.71 / 11.72
+Position: 30900 shares @ 11.5453
+Profit/share: 0.17 | Unrealized: 5398.23
+Reason: profit zone confirmed by VWAP, trend, and volume structure
+Regime probabilities: NOT_READY
+Markov: NOT_READY | Warning: NONE
+Key level: profit/share 0.17
+HE 78.4 | HC 85.0 | MQI 82.5
+EV ranking: HARVEST > MARKET_QUALITY > BREAKOUT > REBUY
+Logic: Long-only harvest alert. Signal only. No order sent.
