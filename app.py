@@ -59,21 +59,23 @@ def reset_engine() -> None:
     st.session_state.pop("delivery_status", None)
 
 
-def send_forecast_alert(db: SQLiteJournal, decision: Decision, forecast_status: dict[str, object]) -> dict[str, str]:
+def decision_alert_text(decision: Decision, engine: DecisionEngineV8RTIS) -> str:
+    return decision.alert_text or engine.format_alert(decision)
+
+
+def send_forecast_alert(
+    db: SQLiteJournal,
+    decision: Decision,
+    engine: DecisionEngineV8RTIS,
+    forecast_status: dict[str, object],
+) -> dict[str, str]:
     if not forecast_status.get("created"):
         return {}
     contacts = db.alert_contacts()
     alerter = MultiChannelAlerter(AlertDeliveryConfig.from_contacts(contacts))
     label = forecast_status.get("update_label") or forecast_status.get("forecast_kind") or "FORECAST"
-    message = f"UNG V8 RTIS {label} #{forecast_status.get('forecast_id')}\n\n" + decision.alert_text_or_default()
+    message = f"UNG V8 RTIS {label} #{forecast_status.get('forecast_id')}\n\n" + decision_alert_text(decision, engine)
     return alerter.send(message)
-
-
-def decision_alert_text(decision: Decision, engine: DecisionEngineV8RTIS) -> str:
-    return decision.alert_text or engine.format_alert(decision)
-
-
-Decision.alert_text_or_default = lambda self: self.alert_text or "Forecast generated. Open dashboard for details."  # type: ignore[attr-defined]
 
 
 st.set_page_config(page_title="UNG V8 RTIS", layout="wide")
@@ -183,7 +185,7 @@ if fetch_latest:
         journal_id = db.record(decision, delivery_status)
         forecast_status = db.record_session_forecast(decision, journal_id=journal_id)
         if forecast_status.get("created"):
-            delivery_status = send_forecast_alert(db, decision, forecast_status) or delivery_status
+            delivery_status = send_forecast_alert(db, decision, engine, forecast_status) or delivery_status
         st.session_state["last_decision"] = decision
         st.session_state["forecast_status"] = forecast_status
         st.session_state["delivery_status"] = delivery_status
