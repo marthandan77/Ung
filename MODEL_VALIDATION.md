@@ -14,7 +14,7 @@ If the model is not actually fitted from real data, the status must say NOT_READ
 
 HMM can be `READY` only when all of these are true:
 
-- `hmmlearn` is importable in the target QuantConnect environment.
+- `hmmlearn` is importable in the target environment.
 - `GaussianHMM` is fitted on actual feature rows.
 - Feature rows come from bars already received.
 - The current bar is not used to fit the model before the current signal.
@@ -53,6 +53,7 @@ Markov can be `READY` only after HMM is `READY` and an actual HMM regime sequenc
 exists.
 
 The transition matrix is built only from observed HMM regime-state transitions.
+No HMM means no Markov.
 
 If HMM is not ready, Markov outputs:
 
@@ -73,6 +74,18 @@ garch_status = FALLBACK_EWMA
 ```
 
 EWMA is not called GARCH.
+
+## Package Discipline
+
+The local/mobile app installs:
+
+- `numpy`
+- `hmmlearn`
+- `arch`
+
+QuantConnect may not include these packages. The QuantConnect file therefore
+keeps optional imports and explicit fallbacks so unsupported packages do not
+cause fake outputs.
 
 ## Observable Indicators
 
