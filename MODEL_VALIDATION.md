@@ -124,6 +124,26 @@ SELL->BUYBACK if sell_buyback_ev > hold_ev
 otherwise HOLD
 ```
 
+## Forecast-Vs-Actual Ledger
+
+The local/mobile dashboard records every decision as a forecast row. Later bars
+close that row at `+5m`, `+15m`, `+30m`, and `+60m`.
+
+For each horizon the ledger stores:
+
+- actual price
+- actual return
+- hit/fail result
+
+The hit rule is deliberately simple:
+
+- harvest/sell/protect signals expect lower or flat future price
+- buy/rebuy/accumulate signals expect higher or flat future price
+- hold/wait signals expect movement to stay inside the volatility band
+
+This ledger is for parameter tuning and model validation. It is not a trade
+execution engine.
+
 ## Anti-Lookahead Discipline
 
 - Backtest dates are 2024-01-01 through 2026-06-15.
