@@ -1,112 +1,156 @@
-# UNG Decision Engine V7-Lite
+# UNG Decision Engine V8 RTIS
 
-Signal-only UNG alert platform.
+V8 RTIS is a signal-only QuantConnect decision engine for UNG.
 
-This project keeps Phase 1 simple:
-
-- Front end: Streamlit dashboard
-- Back end: Python decision engine
-- Data: Alpaca free IEX feed when credentials are supplied
-- Journal: SQLite
-- Alerts: Telegram Bot API
-- QuantConnect: separate backtest validation file
-
-No live orders are placed in this version.
-
-## Free Stack Truth
-
-- Alpaca free market data is IEX-only, not full SIP consolidated tape.
-- QuantConnect free plan is useful for backtesting, but free live Telegram/email/webhook notifications are not the base assumption.
-- Telegram alerts are sent directly from this local Python monitor when configured.
-
-## Setup
-
-Install packages if `.venv` is not already present:
-
-```powershell
-C:\Users\User\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-Run everything locally:
-
-```powershell
-.\start_engine.ps1
-```
-
-The engine dashboard opens at:
+RTIS means Round-Trip Intelligence System. The engine does not try to sell the
+exact top or buy the exact bottom. It asks one simple question:
 
 ```text
-http://localhost:8501
+Is SELL -> WAIT -> BUYBACK expected to beat HOLD?
 ```
 
-Keep the PowerShell window open while using the dashboard.
+No live orders are placed in V8. It is long-only and alert-first.
 
-For a phone-viewable public page, use [DEPLOY_MOBILE.md](DEPLOY_MOBILE.md).
+## Core Setup
 
-Run the dashboard directly:
+- Asset: UNG
+- Resolution: minute
+- Backtest window: 2024-01-01 to 2026-06-15
+- Position assumption: 30,900 shares
+- Average cost assumption: 11.5453
+- Minimum harvest profit: 0.10 per share
+- Trading style: long-only intraday volatility harvest
+- Execution mode: signal-only
 
-```powershell
-.\start_dashboard.ps1
+## V8 States
+
+- `HOLD`
+- `SELL_WATCH`
+- `SELL_READY`
+- `SOLD_WAIT`
+- `BUYBACK_WATCH`
+- `BUYBACK_READY`
+- `WAIT`
+- `PROTECT`
+
+`SELL_READY` means the engine believes the full round trip has better expected
+value than holding. It still does not place an order.
+
+`BUYBACK_READY` means the virtual sell has enough discount and support quality
+for a long-only rebuy signal. It still does not place an order.
+
+## Round-Trip Equation
+
+```text
+Round Trip EV =
+Harvest Profit
++ Expected Buyback Discount
+- Missed Upside Risk
+- Re-entry Failure Risk
 ```
 
-Run one live data check:
+The engine compares:
 
-```powershell
-.\start_monitor_once.ps1
+- `hold_ev`
+- `sell_buyback_ev`
+- `RTE`, which is `sell_buyback_ev - hold_ev`
+
+## SELL_READY Rules
+
+V8 only allows `SELL_READY` when all of these are true:
+
+- position quantity is above zero
+- profit per share is at least 0.10
+- harvest zone is reached
+- missed upside risk is below the threshold
+- re-entry probability is acceptable
+- Sell->Buyback EV is greater than Hold EV
+- market quality is acceptable
+
+## BUYBACK_READY Rules
+
+V8 only allows `BUYBACK_READY` when all of these are true:
+
+- position quantity is zero in the virtual RTIS state
+- last sell price exists
+- current price is at least the dynamic rebuy gap below last sell price
+- price is near VWAP, support, or ATR pullback zone
+- bearish continuation risk is not dominant
+- MQI is acceptable
+
+## Metrics
+
+- `RTE`: Round Trip Expectancy
+- `HE`: Harvest Expectancy
+- `RP`: Re-entry Probability
+- `MUR`: Missed Upside Risk
+- `BC`: Breakout Confidence
+- `MQI`: Market Quality Index
+- `RS`: Regime Stability
+- `hold_ev`: Hold expected value
+- `sell_buyback_ev`: Sell->Buyback expected value
+
+## ML Truth Rules
+
+V8 does not create fake ML probabilities.
+
+- HMM is `NOT_READY` unless `hmmlearn` is importable and a real GaussianHMM is
+  fitted from actual feature rows.
+- Markov is `NOT_READY` unless it is built from the actual HMM regime sequence.
+- GARCH uses the real `arch` package only when available.
+- If `arch` is unavailable, volatility forecasting is labeled
+  `FALLBACK_EWMA`.
+- EWMA is never called GARCH.
+
+## HMM Inputs
+
+When a real HMM is available, V8 fits on these actual minute-bar features:
+
+- log return
+- rolling volatility
+- volume ratio
+- VWAP distance
+- RSI normalized
+- ATR percentage
+
+The HMM output includes:
+
+- `regime_state_id`
+- `regime_probabilities`
+- `regime_label`
+- `model_status`
+- `last_fit_time`
+
+## Training Discipline
+
+- Train on 2024 data.
+- Validate on 2025 data.
+- Walk-forward test on 2026 data.
+- The current bar is stored for future fitting only after the current decision is
+  made.
+- No future bars are used for the current signal.
+
+## Example Alert
+
+```text
+UNG V8 ALERT | events=SELL_WATCH->SELL_READY;harvest zone reached |
+price=12.14 | bid=12.13 ask=12.14 |
+position=30900 avg_cost=11.5453 |
+signal=SELL_READY |
+reason=round-trip EV beats hold EV and re-entry odds are acceptable |
+regime=NOT_READY probs={} |
+markov=NONE |
+key_level=upper Bollinger |
+RTE=0.086 HE=83.4 RP=68.2 MUR=0.091 MQI=82.0 |
+EV=SELL_BUYBACK |
+logic=long-only signal: harvest only when SELL->WAIT->BUYBACK EV beats HOLD EV; no shorting; no live order
 ```
-
-Run the monitor:
-
-```powershell
-.\.venv\Scripts\python.exe run_bot.py --poll-seconds 60
-```
-
-## Optional Live Data
-
-Set these environment variables for Alpaca:
-
-```powershell
-$env:ALPACA_API_KEY_ID="your_key"
-$env:ALPACA_API_SECRET_KEY="your_secret"
-$env:ALPACA_DATA_FEED="iex"
-```
-
-## Optional Telegram Alerts
-
-Set these environment variables:
-
-```powershell
-$env:TELEGRAM_BOT_TOKEN="your_bot_token"
-$env:TELEGRAM_CHAT_ID="your_chat_id"
-```
-
-If Telegram is not configured, alerts print as dry runs.
 
 ## Files
 
-- `app.py`: dashboard
-- `run_bot.py`: local alert monitor
-- `ung_platform/engine.py`: V7-Lite decision engine
-- `ung_platform/alpaca.py`: Alpaca IEX data adapter
-- `ung_platform/alerts.py`: Telegram alert sender
-- `ung_platform/storage.py`: SQLite journal
-- `quantconnect_v7_lite.py`: signal-only QuantConnect backtest file
+- `main.py`: QuantConnect V8 RTIS signal-only engine
+- `MODEL_VALIDATION.md`: model validation and anti-fake-ML rules
+- `CHANGELOG.md`: change history
 
-## Phase 1 Rules
-
-- UNG only
-- Long-only
-- Alert-first
-- No shorting
-- No margin logic
-- No order placement
-- No fake HMM probabilities
-- GARCH status is `FALLBACK_EWMA` unless a real package is added later
-
-## Phase 2 TODO
-
-- Add real HMM only if the package is available and fitted on historical features.
-- Add true Markov transitions only after HMM state history exists.
-- Add live broker integration only after signal-only behavior is proven.
-- Add deployment only after the free local monitor proves reliable.
+The local Streamlit mobile dashboard files remain in the repository, but V8 RTIS
+is implemented first in `main.py` for QuantConnect-style validation.
