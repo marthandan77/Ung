@@ -2,6 +2,11 @@
 
 ## 2026-07-01
 
+- Added real optional `hmmlearn` GaussianHMM support to the local/mobile engine.
+- Added Markov transition probabilities from actual inferred HMM state history.
+- Added real optional `arch` GARCH(1,1) support with honest EWMA fallback.
+- Added `numpy`, `hmmlearn`, and `arch` to `requirements.txt`.
+- Updated the dashboard to show HMM, Markov, and GARCH outputs.
 - Upgraded `main.py` to UNG Decision Engine V8 RTIS.
 - Added signal-only Round-Trip Intelligence System states:
   `HOLD`, `SELL_WATCH`, `SELL_READY`, `SOLD_WAIT`, `BUYBACK_WATCH`,
