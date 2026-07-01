@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from ung_platform.engine import Decision, DecisionEngineV8RTIS, EngineConfig, MarketBar
 from ung_platform.storage import SQLiteJournal
