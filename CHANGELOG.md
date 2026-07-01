@@ -2,6 +2,8 @@
 
 ## 2026-07-01
 
+- Added forecast-vs-actual ledger with +5m, +15m, +30m, and +60m outcomes.
+- Added dashboard forecast scorecard for hit rate and average return review.
 - Added real optional `hmmlearn` GaussianHMM support to the local/mobile engine.
 - Added Markov transition probabilities from actual inferred HMM state history.
 - Added real optional `arch` GARCH(1,1) support with honest EWMA fallback.
