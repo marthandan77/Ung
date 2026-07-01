@@ -94,13 +94,18 @@ V8 only allows `BUYBACK_READY` when all of these are true:
 
 V8 does not create fake ML probabilities.
 
-- HMM is `NOT_READY` unless `hmmlearn` is importable and a real GaussianHMM is
-  fitted from actual feature rows.
-- Markov is `NOT_READY` unless it is built from the actual HMM regime sequence.
-- GARCH uses the real `arch` package only when available.
+- Local/mobile app dependencies now include `numpy`, `hmmlearn`, and `arch`.
+- HMM is `READY` only when `hmmlearn` imports and a real GaussianHMM is fitted
+  from actual feature rows.
+- Markov is `READY` only when it is built from the actual HMM regime sequence.
+- GARCH is `READY` only when the real `arch` package fits a GARCH(1,1) model
+  on actual returns.
 - If `arch` is unavailable, volatility forecasting is labeled
   `FALLBACK_EWMA`.
 - EWMA is never called GARCH.
+
+QuantConnect may not include these third-party packages by default. In that
+case `main.py` stays honest and reports `NOT_READY` or `FALLBACK_EWMA`.
 
 ## HMM Inputs
 
@@ -149,8 +154,10 @@ logic=long-only signal: harvest only when SELL->WAIT->BUYBACK EV beats HOLD EV; 
 ## Files
 
 - `main.py`: QuantConnect V8 RTIS signal-only engine
+- `app.py`: Streamlit/mobile dashboard
+- `ung_platform/engine.py`: local/mobile decision engine with real optional HMM, Markov, and GARCH
 - `MODEL_VALIDATION.md`: model validation and anti-fake-ML rules
 - `CHANGELOG.md`: change history
 
-The local Streamlit mobile dashboard files remain in the repository, but V8 RTIS
-is implemented first in `main.py` for QuantConnect-style validation.
+The local Streamlit mobile dashboard now displays HMM, Markov, and GARCH status
+when enough real bars are available.
