@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-02
+
+- Aligned the local Streamlit engine with the V8 RTIS state vocabulary: `HOLD`, `SELL_WATCH`, `SELL_READY`, `SOLD_WAIT`, `BUYBACK_WATCH`, `BUYBACK_READY`, `WAIT`, and `PROTECT`.
+- Removed the local V7-style state drift from the dashboard path.
+- Reworked SQLite storage so every decision is journaled, but only one official forecast is created per US session.
+- Added material intraday forecast updates as `Update A`, `Update B`, and `Update C`.
+- Added forecast review outcomes at `+5m`, `+15m`, `+30m`, and `+60m` for the official/update ledger.
+- Added adaptive tuning records from the completed scorebook after at least 10 reviewed forecasts.
+- Added GUI prompt boxes for Telegram, WhatsApp, and Email alert destinations.
+- Added Telegram, WhatsApp webhook, and SMTP email delivery plumbing.
+- Removed `Add Manual Bar` and `Load Demo Bars` from the dashboard flow.
+- Added the GitHub button plus the requested heart-button easter egg beside it.
+- Added tests for V8 state vocabulary, duplicate official forecast prevention, and tuning lockout.
+- Added GitHub Actions CI and `.gitignore` for local runtime files.
+
 ## 2026-07-01
 
 - Added forecast-vs-actual ledger with +5m, +15m, +30m, and +60m outcomes.
