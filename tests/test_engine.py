@@ -9,7 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from ung_platform.alerts import normalize_whatsapp_id, whatsapp_payload
+from ung_platform.charts import tradingview_ung_chart_html
 from ung_platform.engine import Decision, DecisionEngineV8RTIS, EngineConfig, MarketBar
+from ung_platform.health import engine_health
 from ung_platform.storage import SQLiteJournal
 
 
@@ -82,3 +85,52 @@ def test_scorecard_migrates_legacy_forecast_ledger(tmp_path) -> None:
     assert [row["horizon"] for row in scorecard] == ["5m", "15m", "30m", "60m"]
     assert all(row["closed"] == 0 for row in scorecard)
     assert all(row["hit_rate_pct"] is None for row in scorecard)
+
+
+def test_tradingview_chart_targets_ung() -> None:
+    html = tradingview_ung_chart_html()
+
+    assert "AMEX:UNG" in html
+    assert "TradingView" in html
+    assert "github" not in html.lower()
+
+
+def test_whatsapp_alert_id_and_payload_are_automated() -> None:
+    assert normalize_whatsapp_id(" +65 9123-4567 ") == "+6591234567"
+    assert normalize_whatsapp_id("whatsapp:+65 9123 4567") == "whatsapp:+6591234567"
+    assert normalize_whatsapp_id("0065 9123 4567") == "+6591234567"
+    assert whatsapp_payload("+65 9123 4567", "UNG test alert") == {
+        "to": "+6591234567",
+        "message": "UNG test alert",
+    }
+
+
+def test_quality_journal_skips_repeated_unchanged_decisions(tmp_path) -> None:
+    _, decision = warmed_engine()
+    db = SQLiteJournal(tmp_path / "ung.sqlite3")
+
+    first = db.record_quality_event(decision)
+    second = db.record_quality_event(decision)
+    decision.snapshot.mqi += 9.0
+    third = db.record_quality_event(decision)
+
+    assert first["created"] is True
+    assert second["created"] is False
+    assert third["created"] is True
+    assert len(db.latest_journal()) == 2
+
+
+def test_engine_health_traffic_light_statuses() -> None:
+    engine = DecisionEngineV8RTIS(EngineConfig(warmup_bars=35))
+    warming = engine.update(make_bar(0, 10.0), emit_alerts=False)
+    assert engine_health(engine, warming)["status"] == "AMBER"
+
+    engine, healthy = warmed_engine()
+    healthy.snapshot.model_status = "READY"
+    healthy.snapshot.markov_status = "READY"
+    healthy.snapshot.garch_status = "READY"
+    healthy.snapshot.mqi = 75.0
+    assert engine_health(engine, healthy)["status"] == "GREEN"
+
+    healthy.snapshot.price = 0.0
+    assert engine_health(engine, healthy)["status"] == "RED"

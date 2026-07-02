@@ -2,6 +2,15 @@
 
 ## 2026-07-02
 
+- Added Engine Health traffic-light status: `GREEN` for running indicators and ML, `AMBER` for warmup, and `RED` for data or market-quality problems.
+- Reduced journal frequency so routine repeated fetches only update forecast reviews; journal rows are added only for material market-quality, signal, edge, or ML-status changes.
+- Moved the live UNG chart into the top dashboard area beside Engine Health.
+- Automated WhatsApp alert setup by normalizing phone numbers and showing the webhook payload preview in the GUI.
+- Added tests for WhatsApp alert ID normalization and webhook payload generation.
+- Removed the GitHub dashboard button and moved the private heart button to the top middle of the GUI.
+- Added a live UNG TradingView chart to the dashboard.
+- Made Telegram, WhatsApp, and Email alert contact fields clearer for high-quality forecast alert delivery.
+- Added a dashboard test-alert button for Telegram, WhatsApp, and Email delivery checks.
 - Aligned the local Streamlit engine with the V8 RTIS state vocabulary: `HOLD`, `SELL_WATCH`, `SELL_READY`, `SOLD_WAIT`, `BUYBACK_WATCH`, `BUYBACK_READY`, `WAIT`, and `PROTECT`.
 - Removed the local V7-style state drift from the dashboard path.
 - Reworked SQLite storage so every decision is journaled, but only one official forecast is created per US session.
@@ -11,7 +20,6 @@
 - Added GUI prompt boxes for Telegram, WhatsApp, and Email alert destinations.
 - Added Telegram, WhatsApp webhook, and SMTP email delivery plumbing.
 - Removed `Add Manual Bar` and `Load Demo Bars` from the dashboard flow.
-- Added the GitHub button plus the requested heart-button easter egg beside it.
 - Added tests for V8 state vocabulary, duplicate official forecast prevention, and tuning lockout.
 - Added GitHub Actions CI and `.gitignore` for local runtime files.
 

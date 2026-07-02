@@ -9,6 +9,29 @@ import urllib.parse
 import urllib.request
 
 
+def normalize_whatsapp_id(value: str | None) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    prefix = ""
+    number = raw
+    if raw.lower().startswith("whatsapp:"):
+        prefix = "whatsapp:"
+        number = raw.split(":", 1)[1].strip()
+    compact = "".join(char for char in number if char.isdigit() or char == "+")
+    if not compact:
+        return raw
+    if compact.startswith("00"):
+        compact = "+" + compact[2:]
+    elif compact.isdigit():
+        compact = "+" + compact
+    return f"{prefix}{compact}"
+
+
+def whatsapp_payload(whatsapp_id: str | None, message: str) -> dict[str, str]:
+    return {"to": normalize_whatsapp_id(whatsapp_id), "message": message}
+
+
 @dataclass
 class TelegramConfig:
     bot_token: str | None
@@ -36,7 +59,7 @@ class AlertDeliveryConfig:
         return cls(
             telegram_bot_token=contacts.get("telegram_bot_token") or os.getenv("TELEGRAM_BOT_TOKEN"),
             telegram_chat_id=contacts.get("telegram_chat_id") or os.getenv("TELEGRAM_CHAT_ID"),
-            whatsapp_id=contacts.get("whatsapp_id"),
+            whatsapp_id=normalize_whatsapp_id(contacts.get("whatsapp_id")),
             whatsapp_webhook_url=contacts.get("whatsapp_webhook_url") or os.getenv("WHATSAPP_WEBHOOK_URL"),
             email_id=contacts.get("email_id"),
         )
@@ -96,7 +119,7 @@ class MultiChannelAlerter:
         if not self.config.whatsapp_webhook_url:
             return "waiting_for_webhook"
         try:
-            body = json.dumps({"to": self.config.whatsapp_id, "message": message}).encode("utf-8")
+            body = json.dumps(whatsapp_payload(self.config.whatsapp_id, message)).encode("utf-8")
             request = urllib.request.Request(
                 self.config.whatsapp_webhook_url,
                 data=body,

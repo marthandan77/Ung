@@ -209,44 +209,128 @@ class SQLiteJournal:
             con.execute(f"alter table {table} add column {column} {spec}")
 
     def record(self, decision: Decision, delivered_channels: dict[str, Any] | None = None) -> int:
-        snap = decision.snapshot
-        payload = decision.to_dict()
         with self._connect() as con:
             self._update_forecast_outcomes(con, decision)
-            cursor = con.execute(
-                """
-                insert into journal (
-                    timestamp, symbol, state, price, profit_per_share,
-                    rte, he, hc, rp, mqi, trigger_reason, payload
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    snap.timestamp.isoformat(),
-                    snap.symbol,
-                    decision.state,
-                    snap.price,
-                    snap.profit_per_share,
-                    snap.rte,
-                    snap.he,
-                    snap.hc,
-                    snap.rp,
-                    snap.mqi,
-                    decision.trigger_reason,
-                    json.dumps(payload, sort_keys=True),
-                ),
-            )
-            if decision.alert:
-                con.execute(
-                    "insert into alerts (timestamp, state, price, message, delivered_channels) values (?, ?, ?, ?, ?)",
-                    (
-                        snap.timestamp.isoformat(),
-                        decision.state,
-                        snap.price,
-                        decision.alert_text,
-                        json.dumps(delivered_channels or {}, sort_keys=True),
-                    ),
-                )
-            return int(cursor.lastrowid)
+            journal_id = self._insert_journal(con, decision)
+            self._record_alert(con, decision, delivered_channels)
+            return journal_id
+
+    def record_quality_event(self, decision: Decision, delivered_channels: dict[str, Any] | None = None) -> dict[str, Any]:
+        with self._connect() as con:
+            self._update_forecast_outcomes(con, decision)
+            latest = self._latest_journal_row(con, decision.snapshot.symbol)
+            reason = self._journal_material_reason(decision, latest)
+            if not reason:
+                return {"created": False, "journal_id": None, "reason": "No material market-quality change."}
+            journal_id = self._insert_journal(con, decision)
+            self._record_alert(con, decision, delivered_channels)
+            return {"created": True, "journal_id": journal_id, "reason": reason}
+
+    def _insert_journal(self, con: sqlite3.Connection, decision: Decision) -> int:
+        snap = decision.snapshot
+        payload = decision.to_dict()
+        cursor = con.execute(
+            """
+            insert into journal (
+                timestamp, symbol, state, price, profit_per_share,
+                rte, he, hc, rp, mqi, trigger_reason, payload
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                snap.timestamp.isoformat(),
+                snap.symbol,
+                decision.state,
+                snap.price,
+                snap.profit_per_share,
+                snap.rte,
+                snap.he,
+                snap.hc,
+                snap.rp,
+                snap.mqi,
+                decision.trigger_reason,
+                json.dumps(payload, sort_keys=True),
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    def _record_alert(self, con: sqlite3.Connection, decision: Decision, delivered_channels: dict[str, Any] | None = None) -> None:
+        if not decision.alert:
+            return
+        snap = decision.snapshot
+        con.execute(
+            "insert into alerts (timestamp, state, price, message, delivered_channels) values (?, ?, ?, ?, ?)",
+            (
+                snap.timestamp.isoformat(),
+                decision.state,
+                snap.price,
+                decision.alert_text,
+                json.dumps(delivered_channels or {}, sort_keys=True),
+            ),
+        )
+
+    def _latest_journal_row(self, con: sqlite3.Connection, symbol: str) -> sqlite3.Row | None:
+        return con.execute(
+            """
+            select state, price, rte, he, rp, mqi, trigger_reason, payload
+            from journal where symbol = ? order by id desc limit 1
+            """,
+            (symbol,),
+        ).fetchone()
+
+    def _journal_material_reason(self, decision: Decision, latest: sqlite3.Row | None) -> str | None:
+        if latest is None:
+            return "First quality snapshot."
+        if decision.alert:
+            return "Alert-quality signal fired."
+
+        snap = decision.snapshot
+        if latest["state"] != decision.state:
+            return f"Signal changed from {latest['state']} to {decision.state}."
+        previous_mqi = self._as_float(latest["mqi"])
+        if self._quality_band(previous_mqi) != self._quality_band(snap.mqi):
+            return f"Market quality band changed from {self._quality_band(previous_mqi)} to {self._quality_band(snap.mqi)}."
+        if abs(snap.mqi - previous_mqi) >= 8.0:
+            return f"Market Quality Index moved by {abs(snap.mqi - previous_mqi):.1f} points."
+        if abs(snap.rte - self._as_float(latest["rte"])) >= 0.04:
+            return "Round-trip expectancy changed materially."
+        if abs(snap.he - self._as_float(latest["he"])) >= 8.0 or abs(snap.rp - self._as_float(latest["rp"])) >= 8.0:
+            return "Harvest or re-entry quality changed materially."
+
+        previous_snapshot = self._previous_snapshot(latest["payload"])
+        for key, current in {
+            "model_status": snap.model_status,
+            "markov_status": snap.markov_status,
+            "garch_status": snap.garch_status,
+            "regime_label": snap.regime_label,
+        }.items():
+            if previous_snapshot.get(key) != current:
+                return f"{key.replace('_', ' ').title()} changed."
+        if latest["trigger_reason"] != decision.trigger_reason and decision.state in {"SELL_WATCH", "SELL_READY", "BUYBACK_WATCH", "BUYBACK_READY", "PROTECT"}:
+            return "Actionable trigger reason changed."
+        return None
+
+    def _previous_snapshot(self, payload: str) -> dict[str, Any]:
+        try:
+            data = json.loads(payload)
+        except (TypeError, json.JSONDecodeError):
+            return {}
+        snapshot = data.get("snapshot")
+        return snapshot if isinstance(snapshot, dict) else {}
+
+    def _quality_band(self, mqi: float) -> str:
+        if mqi >= 70:
+            return "HIGH"
+        if mqi >= 55:
+            return "GOOD"
+        if mqi >= 40:
+            return "WATCH"
+        return "POOR"
+
+    def _as_float(self, value: Any) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
 
     def record_session_forecast(self, decision: Decision, journal_id: int | None = None, force_update: bool = False) -> dict[str, Any]:
         snap = decision.snapshot
