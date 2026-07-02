@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from ung_platform.alerts import normalize_whatsapp_id, whatsapp_payload
 from ung_platform.charts import tradingview_ung_chart_html
 from ung_platform.engine import Decision, DecisionEngineV8RTIS, EngineConfig, MarketBar
 from ung_platform.storage import SQLiteJournal
@@ -91,3 +92,13 @@ def test_tradingview_chart_targets_ung() -> None:
     assert "AMEX:UNG" in html
     assert "TradingView" in html
     assert "github" not in html.lower()
+
+
+def test_whatsapp_alert_id_and_payload_are_automated() -> None:
+    assert normalize_whatsapp_id(" +65 9123-4567 ") == "+6591234567"
+    assert normalize_whatsapp_id("whatsapp:+65 9123 4567") == "whatsapp:+6591234567"
+    assert normalize_whatsapp_id("0065 9123 4567") == "+6591234567"
+    assert whatsapp_payload("+65 9123 4567", "UNG test alert") == {
+        "to": "+6591234567",
+        "message": "UNG test alert",
+    }
