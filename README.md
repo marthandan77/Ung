@@ -42,12 +42,13 @@ The GUI has high-quality alert prompt boxes for Telegram bot token, Telegram cha
 
 ## Dashboard Workflow
 
-- The top GitHub box is removed.
+- The top GitHub box is removed and replaced by the live UNG chart area.
 - The heart button is centered near the top of the dashboard.
-- The dashboard includes a live UNG TradingView chart.
+- The dashboard includes a live UNG TradingView chart with an Engine Health traffic-light panel beside it.
+- Engine Health is `GREEN` when indicators, HMM, Markov, and GARCH are running; `AMBER` while indicators or ML are warming; and `RED` when data or market-quality problems need attention.
 - Click `Fetch Latest Forecast` to pull real UNG market data from Alpaca.
 - Manual bar entry and demo bars are removed.
-- The app records every decision in the journal.
+- The journal records only material market-quality, signal, edge, or ML-status changes.
 - The app creates one `OFFICIAL` forecast per US trading session.
 - Material intraday changes become `Update A`, `Update B`, or `Update C`.
 - Forecast outcomes are filled at `+5m`, `+15m`, `+30m`, and `+60m` as later market bars arrive.
@@ -135,6 +136,7 @@ V8 does not create fake ML probabilities.
 
 - `app.py`: Streamlit dashboard, alert contact prompts, live chart, forecast workflow, easter egg.
 - `ung_platform/charts.py`: TradingView UNG chart embed helper.
+- `ung_platform/health.py`: Engine Health traffic-light status helper.
 - `ung_platform/engine.py`: local V8 RTIS forecast engine.
 - `ung_platform/storage.py`: SQLite journal, official forecast ledger, scorebook, tuning runs.
 - `ung_platform/alerts.py`: Telegram, WhatsApp webhook, and email alert delivery.
