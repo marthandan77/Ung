@@ -345,7 +345,7 @@ class SQLiteJournal:
         return [self._format_forecast_row(dict(row)) for row in rows]
 
     def forecast_scorecard(self, limit: int = 500) -> list[dict[str, Any]]:
-        rows = self.latest_forecasts(limit)
+        rows = [row for row in self.latest_forecasts(limit) if row.get("forecast_kind") in {"OFFICIAL", "UPDATE"}]
         cards: list[dict[str, Any]] = []
         for horizon in self.FORECAST_HORIZONS:
             hit_key = f"hit_{horizon}m"
@@ -355,7 +355,14 @@ class SQLiteJournal:
                 cards.append({"horizon": f"{horizon}m", "closed": 0, "hit_rate_pct": None, "avg_return_pct": None})
                 continue
             hits = sum(1 for row in closed if int(row[hit_key]) == 1)
-            returns = [float(row[ret_key]) for row in closed if row.get(ret_key) is not None]
+            returns = []
+            for row in closed:
+                value = row.get(ret_key)
+                if value is not None:
+                    try:
+                        returns.append(float(value))
+                    except (TypeError, ValueError):
+                        continue
             avg_return = sum(returns) / len(returns) if returns else None
             cards.append(
                 {
@@ -395,12 +402,12 @@ class SQLiteJournal:
                 """
                 select state, hit_30m, hit_60m, return_30m, return_60m
                 from forecast_ledger
-                where actual_60m is not null
+                where actual_60m is not null and forecast_kind in ('OFFICIAL', 'UPDATE')
                 order by id desc limit 120
                 """
             ).fetchall()
             if len(rows) < 10:
-                return {"changed": False, "reason": "Adaptive tuning needs at least 10 completed forecast reviews.", "reviewed_count": len(rows)}
+                return {"changed": False, "reason": "Adaptive tuning needs at least 10 completed official/update forecast reviews.", "reviewed_count": len(rows)}
 
             hits = []
             returns = []
