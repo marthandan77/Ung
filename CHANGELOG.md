@@ -2,6 +2,9 @@
 
 ## 2026-07-02
 
+- Added Engine Health traffic-light status: `GREEN` for running indicators and ML, `AMBER` for warmup, and `RED` for data or market-quality problems.
+- Reduced journal frequency so routine repeated fetches only update forecast reviews; journal rows are added only for material market-quality, signal, edge, or ML-status changes.
+- Moved the live UNG chart into the top dashboard area beside Engine Health.
 - Automated WhatsApp alert setup by normalizing phone numbers and showing the webhook payload preview in the GUI.
 - Added tests for WhatsApp alert ID normalization and webhook payload generation.
 - Removed the GitHub dashboard button and moved the private heart button to the top middle of the GUI.
