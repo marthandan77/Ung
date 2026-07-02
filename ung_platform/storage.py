@@ -153,17 +153,54 @@ class SQLiteJournal:
         self._add_missing_column(con, "journal", "rte", "real not null default 0")
         self._add_missing_column(con, "journal", "rp", "real not null default 0")
         self._add_missing_column(con, "alerts", "delivered_channels", "text not null default '{}'")
-        new_columns = {
+        forecast_columns = {
+            "journal_id": "integer",
+            "forecast_timestamp": "text not null default ''",
             "session_date": "text",
             "forecast_kind": "text not null default 'BAR_LEGACY'",
             "update_label": "text",
-            "reviewed": "integer not null default 0",
+            "symbol": "text not null default 'UNG'",
+            "state": "text not null default 'HOLD'",
+            "expected_direction": "text not null default 'NEUTRAL'",
+            "price_now": "real not null default 0",
+            "forecast_volatility": "real not null default 0",
+            "expected_move_30m": "real not null default 0",
             "rte": "real not null default 0",
+            "he": "real not null default 0",
+            "hc": "real not null default 0",
+            "rp": "real not null default 0",
+            "bc": "real not null default 0",
+            "mqi": "real not null default 0",
+            "rs": "real not null default 0",
             "mur": "real not null default 0",
             "hold_ev": "real not null default 0",
             "sell_buyback_ev": "real not null default 0",
+            "model_status": "text not null default 'legacy'",
+            "regime_label": "text not null default 'legacy'",
+            "regime_state": "text not null default ''",
+            "regime_probabilities": "text not null default '{}'",
+            "markov_state": "text not null default ''",
+            "markov_next": "text not null default '{}'",
+            "markov_warning": "text not null default ''",
+            "garch_status": "text not null default 'legacy'",
+            "ev_ranking": "text not null default ''",
+            "trigger_reason": "text not null default ''",
+            "reviewed": "integer not null default 0",
+            "actual_5m": "real",
+            "return_5m": "real",
+            "hit_5m": "integer",
+            "actual_15m": "real",
+            "return_15m": "real",
+            "hit_15m": "integer",
+            "actual_30m": "real",
+            "return_30m": "real",
+            "hit_30m": "integer",
+            "actual_60m": "real",
+            "return_60m": "real",
+            "hit_60m": "integer",
+            "payload": "text not null default '{}'",
         }
-        for column, spec in new_columns.items():
+        for column, spec in forecast_columns.items():
             self._add_missing_column(con, "forecast_ledger", column, spec)
 
     def _add_missing_column(self, con: sqlite3.Connection, table: str, column: str, spec: str) -> None:
@@ -487,7 +524,9 @@ class SQLiteJournal:
             """
             select id, forecast_timestamp, expected_direction, price_now, forecast_volatility,
                    actual_5m, actual_15m, actual_30m, actual_60m
-            from forecast_ledger where actual_60m is null order by id asc
+            from forecast_ledger
+            where actual_60m is null and forecast_kind in ('OFFICIAL', 'UPDATE')
+            order by id asc
             """
         ).fetchall()
         for row in rows:
@@ -540,10 +579,19 @@ class SQLiteJournal:
         for horizon in self.FORECAST_HORIZONS:
             ret_key = f"return_{horizon}m"
             value = row.pop(ret_key, None)
-            row[f"{ret_key}_pct"] = None if value is None else round(float(value) * 100, 3)
+            if value is None:
+                row[f"{ret_key}_pct"] = None
+                continue
+            try:
+                row[f"{ret_key}_pct"] = round(float(value) * 100, 3)
+            except (TypeError, ValueError):
+                row[f"{ret_key}_pct"] = None
         for key in {"rte", "he", "rp", "mqi"}:
             if row.get(key) is not None:
-                row[key] = round(float(row[key]), 3)
+                try:
+                    row[key] = round(float(row[key]), 3)
+                except (TypeError, ValueError):
+                    row[key] = None
         row["reviewed"] = bool(row.get("reviewed"))
         return row
 
