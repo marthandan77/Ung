@@ -82,7 +82,7 @@ st.set_page_config(page_title="UNG V8 RTIS", layout="wide")
 
 db = SQLiteJournal()
 
-header_left, header_github, header_heart = st.columns([6, 1, 1])
+header_left, header_github, header_heart = st.columns([5.5, 1.2, 1.4])
 with header_left:
     st.title("UNG Decision Engine V8 RTIS")
     st.caption("Forecast and alert machine. Signal-only. No live orders.")
@@ -91,14 +91,20 @@ with header_github:
 with header_heart:
     if "heart_clicks" not in st.session_state:
         st.session_state["heart_clicks"] = 0
-    if st.button("♥", key="heart_button", use_container_width=True):
+    if st.button("♥ Heart", key="heart_button", use_container_width=True, help="Secret heart beside GitHub"):
         st.session_state["heart_clicks"] += 1
 
 heart_clicks = st.session_state.get("heart_clicks", 0)
 if heart_clicks >= 10:
-    st.markdown("<div style='font-family: Brush Script MT, cursive; font-size: 30px; color: #c2185b;'>Juliany i love you</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-family: \"Brush Script MT\", \"Segoe Script\", cursive; font-size: 36px; color: #c2185b; text-align: center; margin: 0.25rem 0 1rem;'>Juliany i love you</div>",
+        unsafe_allow_html=True,
+    )
 elif heart_clicks >= 3:
-    st.markdown("<div style='font-family: Brush Script MT, cursive; font-size: 30px; color: #c2185b;'>Juliany i miss you</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-family: \"Brush Script MT\", \"Segoe Script\", cursive; font-size: 36px; color: #c2185b; text-align: center; margin: 0.25rem 0 1rem;'>Juliany i miss you</div>",
+        unsafe_allow_html=True,
+    )
 
 with st.sidebar:
     st.header("Engine setup")
@@ -255,7 +261,24 @@ if latest_tuning:
 
 st.subheader("Forecast Scorecard")
 st.caption("Hit rate compares official/update forecasts against actual price movement after 5, 15, 30, and 60 minutes.")
-st.dataframe(db.forecast_scorecard(500), hide_index=True, use_container_width=True)
+try:
+    scorecard = db.forecast_scorecard(500)
+    if scorecard:
+        score_cols = st.columns(len(scorecard))
+        for col, card in zip(score_cols, scorecard):
+            hit_rate = card.get("hit_rate_pct")
+            avg_return = card.get("avg_return_pct")
+            hit_label = "Pending" if hit_rate is None else f"{float(hit_rate):.1f}%"
+            if avg_return is None:
+                col.metric(str(card.get("horizon", "--")), hit_label)
+            else:
+                col.metric(str(card.get("horizon", "--")), hit_label, delta=f"{float(avg_return):+.3f}% avg")
+    else:
+        st.info("No official/update forecasts scored yet.")
+    st.dataframe(scorecard, hide_index=True, use_container_width=True)
+except Exception as exc:
+    st.warning("Forecast Scorecard is rebuilding. Older saved data will be migrated automatically on restart.")
+    st.caption(str(exc))
 
 st.subheader("Official Forecast Ledger")
 st.dataframe(db.latest_forecasts(100), hide_index=True, use_container_width=True)
