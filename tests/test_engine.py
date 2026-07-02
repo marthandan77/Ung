@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from ung_platform.charts import tradingview_ung_chart_html
 from ung_platform.engine import Decision, DecisionEngineV8RTIS, EngineConfig, MarketBar
 from ung_platform.storage import SQLiteJournal
 
@@ -82,3 +83,11 @@ def test_scorecard_migrates_legacy_forecast_ledger(tmp_path) -> None:
     assert [row["horizon"] for row in scorecard] == ["5m", "15m", "30m", "60m"]
     assert all(row["closed"] == 0 for row in scorecard)
     assert all(row["hit_rate_pct"] is None for row in scorecard)
+
+
+def test_tradingview_chart_targets_ung() -> None:
+    html = tradingview_ung_chart_html()
+
+    assert "AMEX:UNG" in html
+    assert "TradingView" in html
+    assert "github" not in html.lower()
