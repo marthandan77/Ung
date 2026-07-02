@@ -10,6 +10,7 @@ from ung_platform.alerts import AlertDeliveryConfig, MultiChannelAlerter, normal
 from ung_platform.alpaca import AlpacaConfig, AlpacaDataClient
 from ung_platform.charts import tradingview_ung_chart_html
 from ung_platform.engine import Decision, DecisionEngineV8RTIS, EngineConfig
+from ung_platform.health import engine_health
 from ung_platform.storage import SQLiteJournal
 
 
@@ -56,6 +57,7 @@ def reset_engine() -> None:
     st.session_state.pop("last_decision", None)
     st.session_state.pop("forecast_status", None)
     st.session_state.pop("delivery_status", None)
+    st.session_state.pop("journal_status", None)
 
 
 def decision_alert_text(decision: Decision, engine: DecisionEngineV8RTIS) -> str:
@@ -85,6 +87,26 @@ def test_alert_message() -> str:
             "Future high-quality alerts include signal, price, reason, RTE, HE, RP, MQI, and EV ranking.",
         ]
     )
+
+
+def render_engine_health(health: dict[str, object]) -> None:
+    status = str(health.get("status", "AMBER"))
+    label = str(health.get("label", "Engine warming up"))
+    details = health.get("details") or []
+    color = {"GREEN": "#2e7d32", "AMBER": "#ed9c16", "RED": "#c62828"}.get(status, "#ed9c16")
+    st.subheader("Engine Health")
+    st.markdown(
+        f"""
+        <div style="border-left: 8px solid {color}; padding: 0.85rem 1rem; background: #f7f9fb; border-radius: 8px;">
+          <div style="font-size: 1.5rem; font-weight: 700; color: {color};">{status}</div>
+          <div style="font-size: 0.95rem; color: #263238;">{label}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if isinstance(details, list) and details:
+        for item in details[:5]:
+            st.caption(str(item))
 
 
 st.set_page_config(page_title="UNG V8 RTIS", layout="wide")
@@ -118,7 +140,7 @@ with st.sidebar:
     position_qty = st.number_input("Position shares", min_value=0, value=30_900, step=100)
     average_cost = st.number_input("Average cost", min_value=0.01, value=11.5453, step=0.0001, format="%.4f")
     learning_enabled = st.toggle("Use adaptive tuning", value=True)
-    st.caption("No manual bars and no demo bars. Forecasts come from configured market data.")
+    st.caption("Journal records only material market-quality, signal, edge, or ML-status changes.")
 
     st.divider()
     st.header("High-quality alert contacts")
@@ -200,9 +222,6 @@ with tune_col:
 with status_col:
     st.caption("Official forecast: one per US session. Intraday material changes become Update A/B/C.")
 
-st.subheader("UNG Live Chart")
-components.html(tradingview_ung_chart_html(), height=560, scrolling=False)
-
 if run_tune:
     tuning = db.tune_from_scorebook(config)
     st.session_state["latest_tuning"] = tuning
@@ -222,18 +241,26 @@ if fetch_latest:
         delivery_status: dict[str, str] = {}
         if decision.alert:
             delivery_status = MultiChannelAlerter(AlertDeliveryConfig.from_contacts(db.alert_contacts())).send(decision_alert_text(decision, engine))
-        journal_id = db.record(decision, delivery_status)
-        forecast_status = db.record_session_forecast(decision, journal_id=journal_id)
+        journal_status = db.record_quality_event(decision, delivery_status)
+        forecast_status = db.record_session_forecast(decision, journal_id=journal_status.get("journal_id"))
         if forecast_status.get("created"):
             delivery_status = send_forecast_alert(db, decision, engine, forecast_status) or delivery_status
         st.session_state["last_decision"] = decision
         st.session_state["forecast_status"] = forecast_status
         st.session_state["delivery_status"] = delivery_status
+        st.session_state["journal_status"] = journal_status
         st.success("Latest UNG forecast processed.")
     except Exception as exc:
         st.error(str(exc))
 
 decision: Decision | None = st.session_state.get("last_decision")
+
+chart_col, health_col = st.columns([3, 1])
+with chart_col:
+    st.subheader("UNG Live Chart")
+    components.html(tradingview_ung_chart_html(), height=500, scrolling=False)
+with health_col:
+    render_engine_health(engine_health(engine, decision))
 
 if decision is None:
     st.info("Configure Alpaca data keys, then fetch the latest forecast. Manual and demo bars have been removed.")
@@ -246,6 +273,11 @@ else:
     c4.metric("HE / RP", f"{s.he:.1f} / {s.rp:.1f}")
     c5.metric("MQI", f"{s.mqi:.1f}")
     c6.metric("Model", s.model_status)
+
+    journal_status = st.session_state.get("journal_status")
+    if journal_status:
+        label = "stored" if journal_status.get("created") else "skipped"
+        st.caption(f"Journal {label}: {journal_status.get('reason')}")
 
     forecast_status = st.session_state.get("forecast_status")
     if forecast_status:
