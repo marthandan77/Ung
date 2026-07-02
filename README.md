@@ -50,7 +50,7 @@ The GUI has high-quality alert prompt boxes for Telegram bot token, Telegram cha
 - The app records every decision in the journal.
 - The app creates one `OFFICIAL` forecast per US trading session.
 - Material intraday changes become `Update A`, `Update B`, or `Update C`.
-- Forecast outcomes are filled at `+5m`, `+15m`, and `+60m` as later market bars arrive.
+- Forecast outcomes are filled at `+5m`, `+15m`, `+30m`, and `+60m` as later market bars arrive.
 - The scorecard reviews hit rate and average return by horizon.
 - Adaptive tuning starts only after at least 10 completed forecast reviews.
 - The alert contact panel includes an automated test-alert button for Telegram, WhatsApp, and Email delivery checks.
