@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import sqlite3
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,3 +69,16 @@ def test_tuning_waits_for_enough_reviewed_forecasts(tmp_path) -> None:
 
     assert result["changed"] is False
     assert result["reviewed_count"] < 10
+
+
+def test_scorecard_migrates_legacy_forecast_ledger(tmp_path) -> None:
+    path = tmp_path / "ung.sqlite3"
+    with sqlite3.connect(path) as con:
+        con.execute("create table forecast_ledger (id integer primary key autoincrement)")
+
+    db = SQLiteJournal(path)
+    scorecard = db.forecast_scorecard()
+
+    assert [row["horizon"] for row in scorecard] == ["5m", "15m", "30m", "60m"]
+    assert all(row["closed"] == 0 for row in scorecard)
+    assert all(row["hit_rate_pct"] is None for row in scorecard)
