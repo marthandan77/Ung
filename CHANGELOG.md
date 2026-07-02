@@ -2,6 +2,8 @@
 
 ## 2026-07-02
 
+- Automated WhatsApp alert setup by normalizing phone numbers and showing the webhook payload preview in the GUI.
+- Added tests for WhatsApp alert ID normalization and webhook payload generation.
 - Removed the GitHub dashboard button and moved the private heart button to the top middle of the GUI.
 - Added a live UNG TradingView chart to the dashboard.
 - Made Telegram, WhatsApp, and Email alert contact fields clearer for high-quality forecast alert delivery.
