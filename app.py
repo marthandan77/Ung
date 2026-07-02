@@ -6,7 +6,7 @@ import os
 import streamlit as st
 import streamlit.components.v1 as components
 
-from ung_platform.alerts import AlertDeliveryConfig, MultiChannelAlerter
+from ung_platform.alerts import AlertDeliveryConfig, MultiChannelAlerter, normalize_whatsapp_id, whatsapp_payload
 from ung_platform.alpaca import AlpacaConfig, AlpacaDataClient
 from ung_platform.charts import tradingview_ung_chart_html
 from ung_platform.engine import Decision, DecisionEngineV8RTIS, EngineConfig
@@ -136,20 +136,28 @@ with st.sidebar:
     with st.form("alert_contacts_form"):
         telegram_bot_token = st.text_input("Telegram bot token", value=saved_contacts.get("telegram_bot_token", ""), type="password")
         telegram_chat_id = st.text_input("Telegram chat ID", value=saved_contacts.get("telegram_chat_id", ""))
-        whatsapp_id = st.text_input("WhatsApp phone / ID", value=saved_contacts.get("whatsapp_id", ""))
-        whatsapp_webhook_url = st.text_input("WhatsApp webhook URL", value=saved_contacts.get("whatsapp_webhook_url", ""), type="password")
+        whatsapp_id = st.text_input("WhatsApp number / ID", value=saved_contacts.get("whatsapp_id", ""), placeholder="+6591234567")
+        normalized_whatsapp_id = normalize_whatsapp_id(whatsapp_id)
+        if normalized_whatsapp_id:
+            st.caption(f"Automated WhatsApp send-to: {normalized_whatsapp_id}")
+        whatsapp_webhook_url = st.text_input("WhatsApp webhook URL", value=saved_contacts.get("whatsapp_webhook_url", ""), type="password", placeholder="https://hook.provider.com/...")
         email_id = st.text_input("Email ID", value=saved_contacts.get("email_id", ""))
         if st.form_submit_button("Save alert IDs", use_container_width=True):
             db.save_alert_contacts(
                 {
                     "telegram_bot_token": telegram_bot_token,
                     "telegram_chat_id": telegram_chat_id,
-                    "whatsapp_id": whatsapp_id,
+                    "whatsapp_id": normalized_whatsapp_id,
                     "whatsapp_webhook_url": whatsapp_webhook_url,
                     "email_id": email_id,
                 }
             )
             st.success("Alert IDs saved locally.")
+
+    preview_contacts = db.alert_contacts()
+    preview_config = AlertDeliveryConfig.from_contacts(preview_contacts)
+    if preview_config.whatsapp_id:
+        st.caption("WhatsApp payload: " + json.dumps(whatsapp_payload(preview_config.whatsapp_id, "UNG test alert"), sort_keys=True))
 
     if st.button("Send Test Alert", use_container_width=True):
         status = MultiChannelAlerter(AlertDeliveryConfig.from_contacts(db.alert_contacts())).send(test_alert_message())
