@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from ung_platform.mqi import MQIBar, MQIConfig, NonIBKRMQI
+from ung_platform.mqi import MQIBar, MQIConfig, MQIQuote, NonIBKRMQI
 
 
 def series(start, drift, volume, n=90):
@@ -43,3 +43,26 @@ def test_optional_term_structure_is_reported():
     )
     assert any("term_structure" in warning for warning in result.warnings)
     assert "cross_market_coherence" in result.components
+
+
+def test_mqi_tracks_missing_components_and_coverage():
+    ung = series(10, 0.001, 1_000_000)
+    ng = series(3, 0.001, 200_000)
+    result = NonIBKRMQI(MQIConfig(min_bars=30)).calculate(
+        ung, ng, source_names=["YAHOO_CHART"], as_of=ung[-1].timestamp
+    )
+    assert 0 <= result.coverage <= 1
+    assert "microstructure" in result.missing_components
+    assert "term_structure" in result.missing_components
+    assert result.component_status["volume_price_quality"] == "OK"
+
+
+def test_mqi_quote_improves_microstructure_coverage():
+    ung = series(10, 0.001, 1_000_000)
+    ng = series(3, 0.001, 200_000)
+    quote = MQIQuote(ung[-1].timestamp, 9.99, 10.01, 1000, 1000)
+    result = NonIBKRMQI(MQIConfig(min_bars=30)).calculate(
+        ung, ng, quote=quote, source_names=["ALPACA_IEX"], as_of=ung[-1].timestamp
+    )
+    assert result.component_status["microstructure"] == "OK"
+    assert result.coverage > 0.35
