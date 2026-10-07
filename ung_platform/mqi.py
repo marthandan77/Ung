@@ -62,6 +62,7 @@ class MQIConfig:
                 points = []
         return cls(
             alpaca_feed=os.getenv("ALPACA_DATA_FEED", "iex"),
+            second_ng_symbol=os.getenv("NG_SECOND_SYMBOL") or os.getenv("NG_NEXT_SYMBOL"),
             eia_api_key=os.getenv("EIA_API_KEY"),
             weather_points=tuple(points),
             eia_storage_series=os.getenv("EIA_STORAGE_SERIES"),
@@ -182,7 +183,9 @@ class StooqCsvSource:
 
 
 class AlpacaMQISource:
-    name = "ALPACA_IEX"
+    @property
+    def name(self) -> str:
+        return f"ALPACA_{self.config.alpaca_feed.upper()}"
 
     def __init__(self, config: MQIConfig | None = None, api_key_id: str | None = None, api_secret_key: str | None = None, session: Any = None):
         self.config = config or MQIConfig.from_env()
@@ -214,7 +217,8 @@ class AlpacaMQISource:
         raw = payload.get("bars") or []
         if isinstance(raw, dict):
             raw = raw.get(symbol) or []
-        return [self._bar(item) for item in raw if item]
+        bars = [self._bar(item) for item in raw if item]
+        return sorted({bar.timestamp: bar for bar in bars}.values(), key=lambda bar: bar.timestamp)
 
     def latest_quote(self, symbol: str) -> MQIQuote | None:
         if not self.ready:
@@ -376,8 +380,9 @@ class NonIBKRMQI:
         if len(ng) < self.config.min_bars:
             return self._unavailable("INSUFFICIENT_NG_DATA", source_names, f"NG requires {self.config.min_bars} bars; received {len(ng)}")
 
-        latest_age = (as_of - ung[-1].timestamp).total_seconds() / 3600.0
-        daily_age = (as_of - ng[-1].timestamp).total_seconds() / 3600.0
+        latest_age = max(0.0, (as_of - ung[-1].timestamp).total_seconds() / 3600.0)
+        daily_age = max(0.0, (as_of - ng[-1].timestamp).total_seconds() / 3600.0)
+        quote_age = None if quote is None else max(0.0, (as_of - quote.timestamp).total_seconds() / 3600.0)
         intraday_ok = len(ung) >= self.config.min_intraday_bars and latest_age <= self.config.max_age_minutes / 60.0
         if not intraday_ok:
             warnings.append("UNG intraday data is stale or incomplete")
@@ -387,7 +392,7 @@ class NonIBKRMQI:
         components: dict[str, float] = {}
         component_status: dict[str, str] = {}
 
-        if quote and quote.bid is not None and quote.ask is not None and quote.ask >= quote.bid > 0:
+        if quote and quote.bid is not None and quote.ask is not None and quote.ask >= quote.bid > 0 and (quote_age is None or quote_age <= self.config.max_age_minutes / 60.0):
             mid = (quote.bid + quote.ask) / 2.0
             spread_pct = (quote.ask - quote.bid) / mid if mid else 1.0
             size_score = 50.0
@@ -448,9 +453,12 @@ class NonIBKRMQI:
         missing = [k for k in self.WEIGHTS if component_status.get(k) != "OK"]
         coverage = available_weight
         freshness_score = max(0.0, min(100.0, 100.0 * (1.0 - max(0.0, latest_age) / (self.config.max_age_minutes / 60.0)))) if latest_age >= 0 else 100.0
-        confidence = min(1.0, 0.35 + 0.55 * coverage + 0.10 * (1.0 if freshness_score >= 50 else 0.0))
+        freshness_factor = freshness_score / 100.0
+        confidence = coverage * (0.75 + 0.25 * freshness_factor)
+        if quote_age is not None and quote_age > self.config.max_age_minutes / 60.0:
+            confidence *= 0.75
         if not intraday_ok:
-            confidence *= 0.5
+            confidence *= 0.50
         if daily_age > self.config.max_daily_age_hours:
             confidence *= 0.75
         confidence = round(max(0.0, min(1.0, confidence)), 3)
@@ -497,9 +505,12 @@ class NonIBKRMQI:
         except Exception as exc:
             return self._unavailable("UNAVAILABLE", names, f"NG reference source failed: {type(exc).__name__}: {exc}")
         second = None
-        if second_ng_source and self.config.second_ng_symbol:
+        if self.config.second_ng_symbol:
+            second_source = second_ng_source or yahoo
             try:
-                second = second_ng_source.history(self.config.second_ng_symbol, 180, interval="1h", range_="3mo")
+                second = second_source.history(self.config.second_ng_symbol, 180, interval="1h", range_="3mo")
+                if second:
+                    names.append(f"{second_source.name}:{self.config.second_ng_symbol}")
             except Exception:
                 second = None
         eia = None
@@ -588,11 +599,10 @@ class NonIBKRMQI:
         return max(0.0, min(100.0, 50.0 + 50.0 * confirmation / 60.0))
 
     def _correlation_quality(self, ung: list[MQIBar], ng: list[MQIBar]) -> float:
-        a, b = self._returns(ung), self._returns(ng)
-        n = min(len(a), len(b), 60)
-        if n < 20:
+        aligned = self._aligned_returns(ung, ng)
+        if len(aligned) < 20:
             return 0.0
-        a, b = a[-n:], b[-n:]
+        a, b = zip(*aligned[-60:])
         ma, mb = mean(a), mean(b)
         da, db = [x - ma for x in a], [x - mb for x in b]
         denom = math.sqrt(sum(x * x for x in da) * sum(x * x for x in db))
@@ -602,6 +612,39 @@ class NonIBKRMQI:
         return max(0.0, min(100.0, 50.0 + 50.0 * corr))
 
     @staticmethod
+    def _aligned_returns(ung: list[MQIBar], ng: list[MQIBar]) -> list[tuple[float, float]]:
+        """Align UNG/NG causally at a common frequency; never positional-truncate."""
+        def median_interval_minutes(bars: list[MQIBar]) -> float:
+            if len(bars) < 3:
+                return 1440.0
+            deltas = [(bars[i].timestamp - bars[i - 1].timestamp).total_seconds() / 60.0 for i in range(1, min(len(bars), 40)) if bars[i].timestamp > bars[i - 1].timestamp]
+            return sorted(deltas)[len(deltas) // 2] if deltas else 1440.0
+        def aggregate_hourly(bars: list[MQIBar]) -> list[MQIBar]:
+            buckets: dict[datetime, MQIBar] = {}
+            for bar in bars:
+                key = bar.timestamp.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+                buckets[key] = bar
+            return [buckets[key] for key in sorted(buckets)]
+        u = sorted(ung, key=lambda bar: bar.timestamp)
+        n = sorted(ng, key=lambda bar: bar.timestamp)
+        if median_interval_minutes(u) < 45.0 and median_interval_minutes(n) >= 45.0:
+            u = aggregate_hourly(u)
+        if median_interval_minutes(n) < 45.0 and median_interval_minutes(u) >= 45.0:
+            n = aggregate_hourly(n)
+        ur = {bar.timestamp: bar.close for bar in u}
+        nr = {bar.timestamp: bar.close for bar in n}
+        common = sorted(set(ur).intersection(nr))
+        if len(common) < 2:
+            return []
+        pairs: list[tuple[float, float]] = []
+        for previous, current in zip(common[:-1], common[1:]):
+            up, uc = ur[previous], ur[current]
+            np_, nc = nr[previous], nr[current]
+            if up > 0 and uc > 0 and np_ > 0 and nc > 0:
+                pairs.append((math.log(uc / up), math.log(nc / np_)))
+        return pairs
+
+    @staticmethod
     def _term_structure_quality(front: list[MQIBar], second: list[MQIBar]) -> float | None:
         front, second = [b for b in front if b.close > 0], [b for b in second if b.close > 0]
         if not front or not second:
@@ -609,12 +652,12 @@ class NonIBKRMQI:
         f, s = front[-1].close, second[-1].close
         if f <= 0 or s <= 0:
             return None
-        spread_pct = (f - s) / s
-        return max(0.0, min(100.0, 50.0 + 1250.0 * spread_pct))
+        spread_pct = abs((f - s) / s)
+        return max(50.0, min(100.0, 75.0 + 500.0 * spread_pct))
 
     @staticmethod
     def _storage_context_score(value: float) -> float:
-        # EIA storage is used as a context-validity signal, not as a directional
-        # forecast by itself. Without a historical baseline, neutral is safest.
-        return 50.0
+        # Presence is evidence quality only. Directional storage surprise belongs
+        # in the fundamental feature layer once a point-in-time baseline exists.
+        return 75.0
 
