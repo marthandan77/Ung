@@ -171,6 +171,10 @@ class SQLiteJournal:
             "rp": "real not null default 0",
             "bc": "real not null default 0",
             "mqi": "real not null default 0",
+            "mqi_confidence": "real not null default 0",
+            "mqi_coverage": "real not null default 0",
+            "mqi_source_status": "text not null default 'UNKNOWN'",
+            "mqi_sources": "text not null default '[]'",
             "rs": "real not null default 0",
             "mur": "real not null default 0",
             "hold_ev": "real not null default 0",
@@ -388,7 +392,8 @@ class SQLiteJournal:
             insert into forecast_ledger (
                 journal_id, forecast_timestamp, session_date, forecast_kind, update_label,
                 symbol, state, expected_direction, price_now, forecast_volatility, expected_move_30m,
-                rte, he, hc, rp, bc, mqi, rs, mur, hold_ev, sell_buyback_ev,
+                rte, he, hc, rp, bc, mqi, mqi_confidence, mqi_coverage, mqi_source_status, mqi_sources,
+                rs, mur, hold_ev, sell_buyback_ev,
                 model_status, regime_label, regime_state, regime_probabilities,
                 markov_state, markov_next, markov_warning, garch_status, ev_ranking,
                 trigger_reason, payload
@@ -412,6 +417,10 @@ class SQLiteJournal:
                 snap.rp,
                 snap.bc,
                 snap.mqi,
+                snap.mqi_confidence,
+                snap.mqi_coverage,
+                snap.mqi_source_status,
+                json.dumps(snap.mqi_sources, sort_keys=True),
                 snap.rs,
                 snap.mur,
                 snap.hold_ev,
@@ -457,7 +466,7 @@ class SQLiteJournal:
                        expected_direction, price_now, actual_5m, return_5m, hit_5m,
                        actual_15m, return_15m, hit_15m, actual_30m, return_30m, hit_30m,
                        actual_60m, return_60m, hit_60m, reviewed,
-                       rte, he, rp, mqi, regime_label, garch_status, ev_ranking
+                       rte, he, rp, bc, mqi, mqi_confidence, mqi_coverage, mqi_source_status, mqi_sources, regime_label, garch_status, ev_ranking
                 from forecast_ledger
                 order by id desc limit ?
                 """,
