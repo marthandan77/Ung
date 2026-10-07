@@ -47,7 +47,7 @@ class MQIConfig:
     max_daily_age_hours: float = 36.0
     eia_api_key: str | None = None
     weather_points: tuple[tuple[str, float, float], ...] = ()
-    eia_storage_series: str = "NG.STEO.S3"
+    eia_storage_series: str | None = None
     
     @classmethod
     def from_env(cls) -> "MQIConfig":
@@ -64,6 +64,7 @@ class MQIConfig:
             alpaca_feed=os.getenv("ALPACA_DATA_FEED", "iex"),
             eia_api_key=os.getenv("EIA_API_KEY"),
             weather_points=tuple(points),
+            eia_storage_series=os.getenv("EIA_STORAGE_SERIES"),
         )
 
 
@@ -275,7 +276,7 @@ class EIAStorageSource:
         self.session = session or YahooChartSource._requests_session()
 
     def latest(self) -> float | None:
-        if not self.config.eia_api_key:
+        if not self.config.eia_api_key or not self.config.eia_storage_series:
             return None
         response = self.session.get(
             f"{self.config.eia_api_url.rstrip('/')}/seriesid/{self.config.eia_storage_series}",
