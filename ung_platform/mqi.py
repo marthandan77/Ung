@@ -275,16 +275,17 @@ class AlpacaMQISource:
 class EIAStorageSource:
     name = "EIA_STORAGE"
 
-    def __init__(self, config: MQIConfig | None = None, session: Any = None):
+    def __init__(self, config: MQIConfig | None = None, session: Any = None, api_key: str | None = None):
         self.config = config or MQIConfig.from_env()
+        self.api_key = api_key or self.config.eia_api_key
         self.session = session or YahooChartSource._requests_session()
 
     def latest(self) -> float | None:
-        if not self.config.eia_api_key or not self.config.eia_storage_series:
+        if not self.api_key or not self.config.eia_storage_series:
             return None
         response = self.session.get(
             f"{self.config.eia_api_url.rstrip('/')}/seriesid/{self.config.eia_storage_series}",
-            params={"api_key": self.config.eia_api_key},
+            params={"api_key": self.api_key},
             timeout=self.config.timeout_seconds,
             headers={"User-Agent": "UNG-Decision-Engine/2.0"},
         )
