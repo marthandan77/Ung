@@ -378,16 +378,17 @@ class NonIBKRMQI:
 
         if len(ung) < self.config.min_bars:
             return self._unavailable("INSUFFICIENT_UNG_DATA", source_names, f"UNG requires {self.config.min_bars} bars; received {len(ung)}")
-        if len(ng) < self.config.min_bars:
-            return self._unavailable("INSUFFICIENT_NG_DATA", source_names, f"NG requires {self.config.min_bars} bars; received {len(ng)}")
+        ng_ok = len(ng) >= self.config.min_bars
+        if not ng_ok:
+            warnings.append(f"NG reference requires {self.config.min_bars} bars; received {len(ng)}")
 
         latest_age = max(0.0, (as_of - ung[-1].timestamp).total_seconds() / 3600.0)
-        daily_age = max(0.0, (as_of - ng[-1].timestamp).total_seconds() / 3600.0)
+        daily_age = max(0.0, (as_of - ng[-1].timestamp).total_seconds() / 3600.0) if ng else float("inf")
         quote_age = None if quote is None else max(0.0, (as_of - quote.timestamp).total_seconds() / 3600.0)
         intraday_ok = len(ung) >= self.config.min_intraday_bars and latest_age <= self.config.max_age_minutes / 60.0
         if not intraday_ok:
             warnings.append("UNG intraday data is stale or incomplete")
-        if daily_age > self.config.max_daily_age_hours:
+        if ng_ok and daily_age > self.config.max_daily_age_hours:
             warnings.append("NG reference data is stale")
 
         components: dict[str, float] = {}
@@ -413,12 +414,20 @@ class NonIBKRMQI:
             components["intraday_volatility_quality"] = 0.0
             component_status["intraday_volatility_quality"] = "MISSING"
 
-        if not self._is_stale(ng[-1].timestamp, as_of, self.config.max_daily_age_hours):
-            components["ng_coherence"] = self._correlation_quality(ung, ng)
-            component_status["ng_coherence"] = "OK"
+        if ng_ok and not self._is_stale(ng[-1].timestamp, as_of, self.config.max_daily_age_hours):
+            coherence = self._correlation_quality(ung, ng)
+            if coherence > 0:
+                components["ng_coherence"] = coherence
+                component_status["ng_coherence"] = "OK"
+            else:
+                components["ng_coherence"] = 0.0
+                component_status["ng_coherence"] = "MISSING"
+                warnings.append("UNG/NG have insufficient timestamp overlap for coherence")
         else:
             components["ng_coherence"] = 0.0
             component_status["ng_coherence"] = "MISSING"
+            if not ng_ok:
+                warnings.append("NG coherence omitted because the reference feed is unavailable")
 
         components["volume_price_quality"] = self._volume_price_quality(ung)
         component_status["volume_price_quality"] = "OK"
@@ -504,7 +513,8 @@ class NonIBKRMQI:
             ng = yahoo.history(self.config.ng_symbol, 180, interval="1h", range_="3mo")
             names.append(yahoo.name)
         except Exception as exc:
-            return self._unavailable("UNAVAILABLE", names, f"NG reference source failed: {type(exc).__name__}: {exc}")
+            ng = []
+            names.append(f"{yahoo.name}:FAILED")
         second = None
         if self.config.second_ng_symbol:
             second_source = second_ng_source or yahoo
