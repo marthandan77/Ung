@@ -686,4 +686,6 @@ class SQLiteJournal:
             "reentry_min_probability": float(values["reentry_min_probability"]),
             "mur_max_dollars": float(values["mur_max_dollars"]),
             "mqi_min": float(values["mqi_min"]),
+            "mqi_min_confidence": float(values["mqi_min_confidence"]),
+            "mqi_min_coverage": float(values["mqi_min_coverage"]),
         }
