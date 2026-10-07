@@ -10,6 +10,8 @@ import warnings
 from statistics import mean, pstdev
 from typing import Any
 
+from .mqi import MQIObservation
+
 os.environ.setdefault("LOKY_MAX_CPU_COUNT", "1")
 
 try:
@@ -124,6 +126,9 @@ class FeatureSnapshot:
     rp: float = 0.0
     bc: float = 0.0
     mqi: float = 0.0
+    mqi_confidence: float = 0.0
+    mqi_source_status: str = "INTERNAL"
+    mqi_sources: list[str] = field(default_factory=list)
     mur: float = 0.0
     rte: float = 0.0
     hold_ev: float = 0.0
@@ -214,6 +219,11 @@ class DecisionEngineV8RTIS:
         self.markov_transition_matrix: dict[int, dict[int, float]] = {}
         self.garch_status = "NOT_READY"
         self.garch_forecast = 0.0
+        self.external_mqi: MQIObservation | None = None
+
+    def set_external_mqi(self, observation: MQIObservation | None) -> None:
+        """Attach a non-IBKR MQI observation without changing trading authority."""
+        self.external_mqi = observation
 
     def update(self, bar: MarketBar, emit_alerts: bool = True) -> Decision:
         self._update_indicators(bar)
@@ -373,7 +383,18 @@ class DecisionEngineV8RTIS:
         spread_penalty = 0.0
         if s.spread is not None and price > 0:
             spread_penalty = clamp((s.spread / price) / self.config.spread_warning_pct, 0.0, 1.0) * 35.0
-        s.mqi = round(clamp(80.0 + volume_strength * 15.0 - spread_penalty - (20.0 if bearish_continuation else 0.0), 0.0, 100.0), 2)
+        internal_mqi = round(clamp(80.0 + volume_strength * 15.0 - spread_penalty - (20.0 if bearish_continuation else 0.0), 0.0, 100.0), 2)
+        s.mqi = internal_mqi
+        s.mqi_confidence = 1.0
+        s.mqi_source_status = "INTERNAL"
+        s.mqi_sources = []
+        if self.external_mqi is not None:
+            ext = self.external_mqi
+            if ext.source_status != "UNAVAILABLE" and ext.confidence > 0:
+                s.mqi = round(ext.score, 2)
+                s.mqi_confidence = round(ext.confidence, 3)
+                s.mqi_source_status = ext.source_status
+                s.mqi_sources = list(ext.source_names)
         s.rs = round(100.0 * clamp(
             0.45 * (1.0 - clamp(s.realized_volatility / 0.025, 0.0, 1.0))
             + 0.25 * (1.0 if abs(trend_strength) <= 0.65 else 0.5)
