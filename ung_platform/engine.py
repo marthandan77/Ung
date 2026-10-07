@@ -127,6 +127,7 @@ class FeatureSnapshot:
     bc: float = 0.0
     mqi: float = 0.0
     mqi_confidence: float = 0.0
+    mqi_coverage: float = 0.0
     mqi_source_status: str = "INTERNAL"
     mqi_sources: list[str] = field(default_factory=list)
     mur: float = 0.0
@@ -386,6 +387,7 @@ class DecisionEngineV8RTIS:
         internal_mqi = round(clamp(80.0 + volume_strength * 15.0 - spread_penalty - (20.0 if bearish_continuation else 0.0), 0.0, 100.0), 2)
         s.mqi = internal_mqi
         s.mqi_confidence = 1.0
+        s.mqi_coverage = 1.0
         s.mqi_source_status = "INTERNAL"
         s.mqi_sources = []
         if self.external_mqi is not None:
@@ -393,6 +395,7 @@ class DecisionEngineV8RTIS:
             if ext.source_status != "UNAVAILABLE" and ext.confidence > 0:
                 s.mqi = round(ext.score, 2)
                 s.mqi_confidence = round(ext.confidence, 3)
+                s.mqi_coverage = round(ext.coverage, 3)
                 s.mqi_source_status = ext.source_status
                 s.mqi_sources = list(ext.source_names)
         s.rs = round(100.0 * clamp(
