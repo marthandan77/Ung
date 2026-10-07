@@ -11,6 +11,7 @@ from ung_platform.alpaca import AlpacaConfig, AlpacaDataClient
 from ung_platform.charts import tradingview_ung_chart_html
 from ung_platform.engine import Decision, DecisionEngineV8RTIS, EngineConfig
 from ung_platform.health import engine_health
+from ung_platform.mqi import EIAStorageSource, MQIConfig, NWSWeatherSource, NonIBKRMQI
 from ung_platform.storage import SQLiteJournal
 
 
@@ -237,6 +238,16 @@ if fetch_latest:
         seed_needed = max(engine.config.hmm_min_samples + 40, engine.config.garch_min_returns + 40, engine.config.warmup_bars + 20)
         for seed_bar in client.recent_bars(limit=seed_needed):
             engine.update(seed_bar, emit_alerts=False)
+
+        # Refresh MQI from the non-IBKR hierarchy before every official forecast.
+        # Missing components reduce coverage/confidence; they are never fabricated.
+        mqi_config = MQIConfig.from_env()
+        mqi = NonIBKRMQI(mqi_config)
+        mqi_observation = mqi.fetch_live_bundle(
+            eia_source=EIAStorageSource(mqi_config),
+            weather_source=NWSWeatherSource(mqi_config),
+        )
+        engine.set_external_mqi(mqi_observation)
         decision = engine.update(client.latest_bar())
         delivery_status: dict[str, str] = {}
         if decision.alert:
@@ -271,7 +282,7 @@ else:
     c2.metric("Price", f"{s.price:.2f}")
     c3.metric("RTE", f"{s.rte:.3f}")
     c4.metric("HE / RP", f"{s.he:.1f} / {s.rp:.1f}")
-    c5.metric("MQI", f"{s.mqi:.1f}")
+    c5.metric("MQI", f"{s.mqi:.1f}", help=f"Coverage {s.mqi_coverage:.0%} | confidence {s.mqi_confidence:.2f}")
     c6.metric("Model", s.model_status)
 
     journal_status = st.session_state.get("journal_status")
@@ -306,6 +317,8 @@ else:
         ("GARCH", s.garch_status),
         ("Vol forecast", f"{s.next_period_volatility_forecast:.5f}"),
         ("RTE / HE / RP / MQI", f"{s.rte:.3f} / {s.he:.1f} / {s.rp:.1f} / {s.mqi:.1f}"),
+        ("MQI coverage", f"{s.mqi_coverage:.0%} | confidence {s.mqi_confidence:.2f}"),
+        ("MQI sources", ", ".join(s.mqi_sources) if s.mqi_sources else "none"),
         ("EV ranking", s.ev_ranking),
     ]
     st.dataframe(rows, hide_index=True, use_container_width=True)
