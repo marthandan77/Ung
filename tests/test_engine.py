@@ -152,3 +152,19 @@ def test_external_non_ibkr_mqi_can_override_internal_quality_without_orders() ->
     assert decision.snapshot.mqi_confidence == 0.82
     assert decision.snapshot.mqi_source_status == "OK"
     assert decision.snapshot.mqi_sources == ["YAHOO_CHART"]
+
+
+def test_unavailable_external_mqi_fails_closed() -> None:
+    engine, _ = warmed_engine()
+    observation = MQIObservation(
+        score=0.0,
+        confidence=0.0,
+        source_status="UNAVAILABLE",
+        source_names=[],
+        freshness_hours=None,
+        coverage=0.0,
+    )
+    engine.set_external_mqi(observation)
+    decision = engine.update(make_bar(81, 10.81), emit_alerts=False)
+    assert decision.snapshot.mqi == 0.0
+    assert decision.state == "WAIT"
