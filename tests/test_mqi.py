@@ -41,8 +41,8 @@ def test_optional_term_structure_is_reported():
         source_names=["YAHOO_CHART"],
         as_of=front[-1].timestamp,
     )
-    assert any("term_structure" in warning for warning in result.warnings)
-    assert "cross_market_coherence" in result.components
+    assert result.component_status["term_structure"] == "OK"
+    assert "ng_coherence" in result.components
 
 
 def test_mqi_tracks_missing_components_and_coverage():
