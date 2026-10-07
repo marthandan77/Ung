@@ -11,7 +11,7 @@ from ung_platform.alpaca import AlpacaConfig, AlpacaDataClient
 from ung_platform.charts import tradingview_ung_chart_html
 from ung_platform.engine import Decision, DecisionEngineV8RTIS, EngineConfig
 from ung_platform.health import engine_health
-from ung_platform.mqi import EIAStorageSource, MQIConfig, NWSWeatherSource, NonIBKRMQI
+from ung_platform.mqi import AlpacaMQISource, EIAStorageSource, MQIConfig, NWSWeatherSource, NonIBKRMQI
 from ung_platform.storage import SQLiteJournal
 
 
@@ -245,7 +245,13 @@ if fetch_latest:
         # Missing components reduce coverage/confidence; they are never fabricated.
         mqi_config = MQIConfig.from_env()
         mqi = NonIBKRMQI(mqi_config)
+        mqi_alpaca = AlpacaMQISource(
+            mqi_config,
+            api_key_id=secret_or_env("ALPACA_API_KEY_ID", "alpaca"),
+            api_secret_key=secret_or_env("ALPACA_API_SECRET_KEY", "alpaca"),
+        )
         mqi_observation = mqi.fetch_live_bundle(
+            alpaca_source=mqi_alpaca,
             eia_source=EIAStorageSource(mqi_config),
             weather_source=NWSWeatherSource(mqi_config),
         )
