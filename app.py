@@ -46,6 +46,8 @@ def tuned_engine_config(db: SQLiteJournal, position_qty: int, average_cost: floa
         reentry_min_probability=float(params["reentry_min_probability"]),
         mur_max_dollars=float(params["mur_max_dollars"]),
         mqi_min=float(params["mqi_min"]),
+        mqi_min_confidence=float(params["mqi_min_confidence"]),
+        mqi_min_coverage=float(params["mqi_min_coverage"]),
     )
 
 
