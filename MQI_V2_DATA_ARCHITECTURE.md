@@ -1,6 +1,6 @@
 # MQI V2 Data Architecture
 
-MQI V2 is a market-quality layer for the UNG V8 RTIS engine. It does not create orders, change long-only authority, or manufacture missing evidence.
+MQI V2 is a market-quality layer for the UNG V8 RTIS engine. It does not create orders, change long-only authority, or manufacture missing evidence. External MQI is fail-closed: an unavailable or insufficient primary feed cannot silently fall back to an internal/synthetic quality score.
 
 ## Source hierarchy
 
@@ -25,7 +25,7 @@ NWS provides hourly forecast data through the public weather API. Weather is con
 
 - Microstructure: bid/ask spread and quote sizes.
 - Intraday volatility quality: realized volatility from current UNG minute bars.
-- UNG/NG coherence: relationship between UNG and Henry Hub returns.
+- UNG/NG coherence: timestamp-aligned relationship between UNG and Henry Hub returns; minute UNG bars are aggregated to hourly closes when NG is hourly.
 - Volume-price quality: participation confirmation.
 - Term structure: front/next NG relationship when a second contract is explicitly configured.
 - Context quality: EIA storage and NWS weather when configured.
@@ -34,7 +34,7 @@ NWS provides hourly forecast data through the public weather API. Weather is con
 
 MQI score, MQI confidence, and data coverage are separate values.
 
-Missing data is never converted into a neutral score. Missing components reduce coverage and confidence. If primary intraday UNG data is unavailable or stale, MQI becomes unavailable/degraded rather than using an old daily score as a substitute for live evidence.
+Missing data is never converted into a neutral score. Missing components reduce coverage and confidence. If primary intraday UNG data is unavailable or stale, MQI becomes unavailable/degraded rather than using an old daily score as a substitute for live evidence. NG is strongly preferred rather than an absolute MQI dependency; when NG is missing, coherence is marked missing and decision gating normally prevents an actionable signal because coverage/confidence falls.
 
 The engine records score, confidence, coverage, source status, source names, missing components, component status, and freshness.
 
@@ -56,3 +56,5 @@ Optional context:
 ## V8 integration
 
 Before each official forecast, the Streamlit app refreshes the external MQI bundle and attaches it to the decision engine. MQI remains a quality/confirmation layer only. It does not override cost-basis protection, create orders, or authorize shorting.
+
+- NG_SECOND_SYMBOL or NG_NEXT_SYMBOL: optional exact broker/data-provider identifier for the next Henry Hub contract.
