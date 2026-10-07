@@ -252,7 +252,7 @@ if fetch_latest:
         )
         mqi_observation = mqi.fetch_live_bundle(
             alpaca_source=mqi_alpaca,
-            eia_source=EIAStorageSource(mqi_config),
+            eia_source=EIAStorageSource(mqi_config, api_key=secret_or_env("EIA_API_KEY", "eia")),
             weather_source=NWSWeatherSource(mqi_config),
         )
         engine.set_external_mqi(mqi_observation)
