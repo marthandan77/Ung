@@ -21,14 +21,15 @@ def test_mqi_bounded_and_confident():
     assert result.source_status in {"OK", "DEGRADED"}
 
 
-def test_mqi_requires_ng():
+def test_mqi_degrades_without_ng_reference():
     ung = series(10, 0.001, 1_000_000, 40)
     result = NonIBKRMQI(MQIConfig(min_bars=30)).calculate(
-        ung, [], source_names=["YAHOO_CHART"]
+        ung, [], source_names=["ALPACA_IEX"]
     )
-    assert result.score == 0
-    assert result.confidence == 0
-    assert result.source_status == "INSUFFICIENT_NG_DATA"
+    assert result.score > 0
+    assert result.confidence < 0.75
+    assert result.source_status == "DEGRADED"
+    assert "ng_coherence" in result.missing_components
 
 
 def test_optional_term_structure_is_reported():
