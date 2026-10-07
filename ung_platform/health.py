@@ -26,6 +26,10 @@ def engine_health(engine: DecisionEngineV8RTIS, decision: Decision | None) -> di
         problems.append("No market bars loaded.")
     if s.mqi < 40:
         problems.append("Market Quality Index is below the red threshold.")
+    if s.mqi_source_status == "UNAVAILABLE":
+        problems.append("External MQI is unavailable; no manufactured quality score is being used.")
+    elif s.mqi_coverage < 0.50:
+        warming.append(f"MQI coverage is only {s.mqi_coverage:.0%}; contextual evidence is incomplete.")
     if s.atr < 0 or s.vwap <= 0:
         problems.append("Core indicators are invalid.")
 
