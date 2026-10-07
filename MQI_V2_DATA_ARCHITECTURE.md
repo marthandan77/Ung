@@ -49,6 +49,7 @@ Required for primary non-IBKR market data:
 Optional context:
 
 - EIA_API_KEY
+- EIA_STORAGE_SERIES (explicit EIA series identifier; no series is guessed by the engine)
 - NG_WEATHER_POINTS as JSON, for example:
   [{"name":"Chicago","lat":41.88,"lon":-87.63},{"name":"Houston","lat":29.76,"lon":-95.37}]
 
