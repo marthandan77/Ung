@@ -23,6 +23,8 @@ Configure market data with Alpaca environment variables or Streamlit secrets:
 ALPACA_API_KEY_ID
 ALPACA_API_SECRET_KEY
 ALPACA_DATA_FEED=iex
+EIA_API_KEY=optional
+NG_WEATHER_POINTS=optional JSON list of U.S. weather points
 ```
 
 Optional alert delivery settings:
