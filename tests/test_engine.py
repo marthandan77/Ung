@@ -13,6 +13,7 @@ from ung_platform.alerts import normalize_whatsapp_id, whatsapp_payload
 from ung_platform.charts import tradingview_ung_chart_html
 from ung_platform.engine import Decision, DecisionEngineV8RTIS, EngineConfig, MarketBar
 from ung_platform.health import engine_health
+from ung_platform.mqi import MQIObservation
 from ung_platform.storage import SQLiteJournal
 
 
@@ -134,3 +135,20 @@ def test_engine_health_traffic_light_statuses() -> None:
 
     healthy.snapshot.price = 0.0
     assert engine_health(engine, healthy)["status"] == "RED"
+
+
+def test_external_non_ibkr_mqi_can_override_internal_quality_without_orders() -> None:
+    engine, _ = warmed_engine()
+    observation = MQIObservation(
+        score=61.5,
+        confidence=0.82,
+        source_status="OK",
+        source_names=["YAHOO_CHART"],
+        freshness_hours=1.0,
+    )
+    engine.set_external_mqi(observation)
+    decision = engine.update(make_bar(81, 10.81), emit_alerts=False)
+    assert decision.snapshot.mqi == 61.5
+    assert decision.snapshot.mqi_confidence == 0.82
+    assert decision.snapshot.mqi_source_status == "OK"
+    assert decision.snapshot.mqi_sources == ["YAHOO_CHART"]
