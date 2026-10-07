@@ -66,3 +66,20 @@ def test_mqi_quote_improves_microstructure_coverage():
     )
     assert result.component_status["microstructure"] == "OK"
     assert result.coverage > 0.35
+
+
+def test_mqi_uses_timestamp_alignment_for_mixed_frequency_data():
+    start = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    ung = [
+        MQIBar(start + timedelta(minutes=i), 10.0 + 0.0005 * i, 1000)
+        for i in range(180)
+    ]
+    ng = [
+        MQIBar(start + timedelta(hours=i), 3.0 + 0.001 * i, 2000)
+        for i in range(3)
+    ]
+    result = NonIBKRMQI(MQIConfig(min_bars=3, min_intraday_bars=30)).calculate(
+        ung, ng, as_of=ung[-1].timestamp, source_names=["TEST"]
+    )
+    assert result.component_status["ng_coherence"] == "OK"
+    assert result.missing_components.count("ng_coherence") == 0
