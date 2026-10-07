@@ -388,6 +388,8 @@ class NonIBKRMQI:
         intraday_ok = len(ung) >= self.config.min_intraday_bars and latest_age <= self.config.max_age_minutes / 60.0
         if not intraday_ok:
             warnings.append("UNG intraday data is stale or incomplete")
+        if quote_age is not None and quote_age + (5.0 / 60.0) < latest_age:
+            warnings.append("UNG quote is materially newer than the latest minute bar; feed freshness is inconsistent")
         if ng_ok and daily_age > self.config.max_daily_age_hours:
             warnings.append("NG reference data is stale")
 
@@ -467,6 +469,8 @@ class NonIBKRMQI:
         confidence = coverage * (0.75 + 0.25 * freshness_factor)
         if quote_age is not None and quote_age > self.config.max_age_minutes / 60.0:
             confidence *= 0.75
+        if quote_age is not None and quote_age + (5.0 / 60.0) < latest_age:
+            confidence *= 0.60
         if not intraday_ok:
             confidence *= 0.50
         if daily_age > self.config.max_daily_age_hours:
