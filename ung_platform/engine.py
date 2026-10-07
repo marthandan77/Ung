@@ -47,6 +47,8 @@ class EngineConfig:
     reentry_min_probability: float = 62.0
     mur_max_dollars: float = 0.16
     mqi_min: float = 55.0
+    mqi_min_confidence: float = 0.65
+    mqi_min_coverage: float = 0.75
     meaningful_rebuy_drop: float = 0.15
     opening_range_minutes: int = 30
     warmup_bars: int = 35
@@ -392,12 +394,16 @@ class DecisionEngineV8RTIS:
         s.mqi_sources = []
         if self.external_mqi is not None:
             ext = self.external_mqi
-            if ext.source_status != "UNAVAILABLE" and ext.confidence > 0:
-                s.mqi = round(ext.score, 2)
-                s.mqi_confidence = round(ext.confidence, 3)
-                s.mqi_coverage = round(ext.coverage, 3)
-                s.mqi_source_status = ext.source_status
-                s.mqi_sources = list(ext.source_names)
+            s.mqi = round(ext.score, 2)
+            s.mqi_confidence = round(ext.confidence, 3)
+            s.mqi_coverage = round(ext.coverage, 3)
+            s.mqi_source_status = ext.source_status
+            s.mqi_sources = list(ext.source_names)
+            # An explicitly requested external MQI is authoritative for live
+            # data-quality gating. Never silently replace a failed feed with a
+            # synthetic/internal score.
+            if ext.source_status == "UNAVAILABLE" or ext.confidence <= 0 or ext.coverage <= 0:
+                s.mqi = 0.0
         s.rs = round(100.0 * clamp(
             0.45 * (1.0 - clamp(s.realized_volatility / 0.025, 0.0, 1.0))
             + 0.25 * (1.0 if abs(trend_strength) <= 0.65 else 0.5)
@@ -419,6 +425,8 @@ class DecisionEngineV8RTIS:
             return Decision(self.WAIT, f"warming up {len(self.closes)}/{self.config.warmup_bars} bars", "warmup", s)
         if s.mqi < 40:
             return Decision(self.WAIT, "market quality too weak for a clean forecast alert", "MQI", s)
+        if s.mqi_coverage < self.config.mqi_min_coverage or s.mqi_confidence < self.config.mqi_min_confidence:
+            return Decision(self.WAIT, "market-quality evidence is incomplete or insufficiently confident", "MQI_CONFIDENCE", s)
         if s.position_qty > 0 and s.profit_per_share < 0:
             return Decision(self.PROTECT, "cost-basis protection: below average cost; no harvest sell signal allowed", "cost basis", s)
 
@@ -430,6 +438,8 @@ class DecisionEngineV8RTIS:
                 and s.rp >= self.config.reentry_min_probability
                 and s.sell_buyback_ev > s.hold_ev
                 and s.mqi >= self.config.mqi_min
+                and s.mqi_coverage >= self.config.mqi_min_coverage
+                and s.mqi_confidence >= self.config.mqi_min_confidence
             )
             if sell_ready:
                 return Decision(self.SELL_READY, "round-trip EV beats hold EV and re-entry odds are acceptable", "RTE", s)
