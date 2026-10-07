@@ -24,6 +24,8 @@ ALPACA_API_KEY_ID
 ALPACA_API_SECRET_KEY
 ALPACA_DATA_FEED=iex
 EIA_API_KEY=optional
+EIA_STORAGE_SERIES=optional explicit EIA series identifier
+NG_SECOND_SYMBOL=optional next Henry Hub futures symbol for term structure
 NG_WEATHER_POINTS=optional JSON list of U.S. weather points
 ```
 
